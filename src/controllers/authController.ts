@@ -9,9 +9,9 @@ import jwt from "jsonwebtoken";
 import {
   createOtp,
   createUser,
-  getOtpByValue,
+  getOtpByEmail,
+  getUserByEmail,
   getUserById,
-  getUserByValue,
   updateOtp,
   updateUser,
 } from "../services/authServices";
@@ -23,35 +23,14 @@ import {
   Continent,
   COUNTRIES_BY_CONTINENT,
 } from "../utils/auth";
-import { generateToken } from "../utils/generate";
-import { OtpChannel, Prisma } from "../../generated/prisma/client";
+import { generateOtpCode, generateToken } from "../utils/generate";
+import { Prisma } from "../../generated/prisma/client";
 import { UserCreateInput } from "../../generated/prisma/models";
-import validator from "validator";
-
-type RegistrationType = "phone" | "email";
-
-interface CountryContinentRequestBody {
-  type: RegistrationType;
-  value: string;
-  continentId: number;
-  countryCode: string;
-}
 
 export const register = [
-  body("type", "Invalid registration type")
+  body("email")
     .trim()
-    .notEmpty()
-    .isIn(["phone", "email"])
-    .withMessage("Registration type must be either phone or email"),
-  body("value").trim().notEmpty().withMessage("Value is required"),
-  body("value")
-    .if((value, { req }) => req.body.type === "phone")
-    .matches(/^[0-9]+$/)
-    .withMessage("Phone number must contain only digits")
-    .isLength({ min: 5, max: 12 })
-    .withMessage("Phone number must be between 5 and 12 digits"),
-  body("value")
-    .if((value, { req }) => req.body.type === "email")
+    .toLowerCase()
     .isEmail()
     .withMessage("Invalid email address"),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -61,26 +40,25 @@ export const register = [
     }
 
     //get req body
-    const { type, value } = req.body;
+    const { email } = req.body;
 
     //check user is exist or not
-    const user = await getUserByValue(value, type);
+    const user = await getUserByEmail(email);
     checkUserIfExist(user);
 
-    const otpCode = 12345; // implement later
+    const otpCode = generateOtpCode;
     const salt = await bcrypt.genSalt(10);
     const hashedOtp = await bcrypt.hash(otpCode.toString(), salt);
     const token = generateToken();
     let result;
 
-    const otprow = await getOtpByValue(value);
+    const otprow = await getOtpByEmail(email);
     if (!otprow) {
       const otpData: Prisma.OtpCreateInput = {
-        recipient: value,
+        email: email,
         otpCode: hashedOtp,
         rememberToken: token,
         purpose: "REGISTER",
-        channel: type.toUpperCase(),
       };
       result = await createOtp(otpData);
     } else {
@@ -89,7 +67,8 @@ export const register = [
       const isSameDay = lastOtpRequest === today;
       checkOtpErrorIfSameDate(isSameDay, otprow.attemptCount);
       if (!isSameDay) {
-        const otpData: any = {
+        const otpData: Prisma.OtpUpdateInput = {
+          purpose: "REGISTER",
           otpCode: hashedOtp,
           rememberToken: token,
           attemptCount: 1,
@@ -106,7 +85,8 @@ export const register = [
             ),
           );
         } else {
-          const otpData: any = {
+          const otpData: Prisma.OtpUpdateInput = {
+            purpose: "REGISTER",
             otpCode: hashedOtp,
             rememberToken: token,
             attemptCount: {
@@ -119,28 +99,18 @@ export const register = [
     }
 
     res.status(200).json({
-      message: `OTP  successfully sent to ${value}!`,
-      value: result.recipient,
+      message: `OTP  successfully sent to ${email}!`,
+      otp: otpCode,
+      email: result.email,
       token: result.rememberToken,
     });
   },
 ];
 
 export const verifyOtp = [
-  body("type", "Invalid registration type")
+  body("email")
     .trim()
-    .notEmpty()
-    .isIn(["phone", "email"])
-    .withMessage("Registration type must be either phone or email"),
-  body("value").trim().notEmpty().withMessage("Value is required"),
-  body("value")
-    .if((value, { req }) => req.body.type === "phone")
-    .matches(/^[0-9]+$/)
-    .withMessage("Phone number must contain only digits")
-    .isLength({ min: 5, max: 12 })
-    .withMessage("Phone number must be between 5 and 12 digits"),
-  body("value")
-    .if((value, { req }) => req.body.type === "email")
+    .toLowerCase()
     .isEmail()
     .withMessage("Invalid email address"),
   body("otp", "Invalid Otp")
@@ -155,25 +125,33 @@ export const verifyOtp = [
       return next(createError(errors[0].msg, 400, errorCode.invalid));
     }
 
-    const { type, value, otp, token } = req.body;
+    const { email, otp, token } = req.body;
 
-    const user = await getUserByValue(value, type);
+    const user = await getUserByEmail(email);
     checkUserIfExist(user);
 
-    const otprow = await getOtpByValue(value);
+    const otprow = await getOtpByEmail(email);
     checkOtpExist(otprow);
-    let result;
 
+    if (otprow?.purpose !== "REGISTER") {
+      return next(createError("Wrong Otp usage!", 400, errorCode.invalid));
+    }
+
+    let result;
     const lastOtpRequest = new Date(otprow!.updatedAt).toLocaleDateString();
     const today = new Date().toLocaleDateString();
     const isSameDay = lastOtpRequest === today;
     checkOtpErrorIfSameDate(isSameDay, otprow!.requestError);
 
+    //this is suspect try so we want to make to error count 5 and try to block
     if (otprow?.rememberToken !== token) {
-      const otpData = {
-        error: 5,
+      const otpData: Prisma.OtpUpdateInput = {
+        requestError: 5,
       };
       await updateOtp(otprow!.id, otpData);
+      return next(
+        createError("Invalid verification token.", 401, errorCode.attack),
+      );
     }
 
     const isExpired = moment().diff(otprow?.updatedAt, "minutes") > 1;
@@ -190,53 +168,41 @@ export const verifyOtp = [
 
     if (!isMatchOtp) {
       if (!isSameDay) {
-        const otpData = {
+        const otpData: Prisma.OtpUpdateInput = {
           requestError: 1,
         };
         await updateOtp(otprow!.id, otpData);
       } else {
-        const otpData = {
+        const otpData: Prisma.OtpUpdateInput = {
           requestError: {
             increment: 1,
           },
         };
         await updateOtp(otprow!.id, otpData);
       }
-      return next(createError("OTP is not correct!", 401, "invalidOtp"));
+      return next(createError("OTP is not correct!", 401, errorCode.invalid));
     }
 
     const verifyToken = generateToken();
-    const otpData = {
+    const otpData: Prisma.OtpUpdateInput = {
       verifyToken,
       requestError: 0,
-      attemptCount: 1,
       verifyAt: new Date(),
     };
 
     result = await updateOtp(otprow!.id, otpData);
     res.status(200).json({
       message: "You are Successfully Verified!",
-      value: result.recipient,
+      email: result.email,
       token: result.verifyToken,
     });
   },
 ];
 
 export const confirmPassword = [
-  body("type", "Invalid registration type")
+  body("email")
     .trim()
-    .notEmpty()
-    .isIn(["phone", "email"])
-    .withMessage("Registration type must be either phone or email"),
-  body("value").trim().notEmpty().withMessage("Value is required"),
-  body("value")
-    .if((value, { req }) => req.body.type === "phone")
-    .matches(/^[0-9]+$/)
-    .withMessage("Phone number must contain only digits")
-    .isLength({ min: 5, max: 12 })
-    .withMessage("Phone number must be between 5 and 12 digits"),
-  body("value")
-    .if((value, { req }) => req.body.type === "email")
+    .toLowerCase()
     .isEmail()
     .withMessage("Invalid email address"),
   body("password")
@@ -259,27 +225,31 @@ export const confirmPassword = [
       return next(createError(errors[0].msg, 400, errorCode.invalid));
     }
 
-    const { type, value, token, password } = req.body;
+    const { email, token, password } = req.body;
 
-    const user = await getUserByValue(type, value);
+    const user = await getUserByEmail(email);
     checkUserIfExist(user);
 
-    const otpRow = await getOtpByValue(value);
+    const otpRow = await getOtpByEmail(email);
     checkOtpExist(otpRow);
 
-    if (otpRow?.verifyToken != token) {
+    if (otpRow?.purpose !== "REGISTER") {
+      return next(createError("Wrong OTP usage!", 400, errorCode.invalid));
+    }
+
+    if (otpRow?.verifyToken !== token) {
       return next(
         createError("You are not authenticated user!", 400, errorCode.attack),
       );
     }
 
-    const isExpired = moment().diff(otpRow?.updatedAt, "minutes") > 1;
+    const isExpired = moment().diff(otpRow?.verifyAt, "minutes") > 1;
     if (isExpired) {
       return next(
         createError(
-          "OTP has expired. Please request a new one.",
+          "Verification has expired. Please verify again.",
           403,
-          "otpExpired",
+          errorCode.otpExpired,
         ),
       );
     }
@@ -287,12 +257,10 @@ export const confirmPassword = [
     const salt = await bcrypt.genSalt(10);
     const hashPassword = await bcrypt.hash(password, salt);
 
-    const randToken = "I will replace later";
     const userData: UserCreateInput = {
-      email: type === "email" ? value : null,
-      phone: type === "phone" ? value : null,
+      email: email,
       password: hashPassword,
-      refreshToken: randToken,
+      verifiedAt: new Date(),
     };
 
     const newUser = await createUser(userData);
@@ -303,8 +271,7 @@ export const confirmPassword = [
 
     const refreshTokenPayload = {
       id: newUser.id,
-      recipient:
-        newUser.email === null || undefined ? newUser.phone : newUser.email,
+      email: newUser.email,
     };
 
     const accessToken = jwt.sign(
@@ -347,21 +314,7 @@ export const confirmPassword = [
 ];
 
 export const login = [
-  body("type", "Invalid registration type")
-    .trim()
-    .notEmpty()
-    .isIn(["phone", "email"]),
-  body("value").trim().notEmpty().withMessage("Value is required"),
-  body("value")
-    .if((value, { req }) => req.body.type === "phone")
-    .matches(/^[0-9]+$/)
-    .withMessage("Phone number must contain only digits")
-    .isLength({ min: 5, max: 12 })
-    .withMessage("Phone number must be between 5 and 12 digits"),
-  body("value")
-    .if((value, { req }) => req.body.type === "email")
-    .isEmail()
-    .withMessage("Invalid email address"),
+  body("email").isEmail().withMessage("Invalid email address"),
   body("password")
     .notEmpty()
     .withMessage("Password is required")
@@ -373,9 +326,9 @@ export const login = [
       return next(createError(errors[0].msg, 400, errorCode.invalid));
     }
 
-    const { type, value, password } = req.body;
+    const { email, password } = req.body;
 
-    const user = await getUserByValue(value, type);
+    const user = await getUserByEmail(email);
     checkUserIfNotExist(user);
 
     if (!user?.password) {
@@ -440,11 +393,9 @@ export const login = [
       id: user!.id,
     };
 
-    const recipient = user!.email ?? user!.phone;
-
     const refreshTokenPayload = {
       id: user!.id,
-      recipient: recipient,
+      email: user!.email,
     };
 
     const accessToken = jwt.sign(
@@ -483,35 +434,7 @@ export const login = [
 ];
 
 export const countryContinent = [
-  body("type")
-    .isString()
-    .withMessage("Registration type must be a string")
-    .trim()
-    .notEmpty()
-    .withMessage("Registration type is required")
-    .bail()
-    .isIn(["phone", "email"])
-    .withMessage("Registration type must be phone or email"),
-
-  body("value")
-    .isString()
-    .withMessage("Value must be a string")
-    .trim()
-    .notEmpty()
-    .withMessage("Value is required"),
-
-  body("value")
-    .if((_value, { req }) => req.body.type === "phone")
-    .matches(/^[0-9]+$/)
-    .withMessage("Phone number must contain only digits")
-    .isLength({ min: 5, max: 12 })
-    .withMessage("Phone number must be between 5 and 12 digits"),
-
-  body("value")
-    .if((_value, { req }) => req.body.type === "email")
-    .isEmail()
-    .withMessage("Invalid email address"),
-
+  body("email").isEmail().withMessage("Invalid Email"),
   body("continentId")
     .notEmpty()
     .withMessage("Continent is required")
@@ -519,7 +442,6 @@ export const countryContinent = [
     .isInt({ min: 1 })
     .withMessage("Invalid continent ID")
     .toInt(),
-
   body("countryCode")
     .isString()
     .withMessage("Country code must be a string")
@@ -532,12 +454,7 @@ export const countryContinent = [
     .isLength({ min: 2, max: 2 })
     .withMessage("Country code must contain exactly 2 letters")
     .toUpperCase(),
-
-  async (
-    req: Request<Record<string, never>, unknown, CountryContinentRequestBody>,
-    res: Response,
-    next: NextFunction,
-  ) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const errors = validationResult(req).array({
         onlyFirstError: true,
@@ -547,7 +464,7 @@ export const countryContinent = [
         return next(createError(errors[0].msg, 400, errorCode.invalid));
       }
 
-      const { type, value, continentId, countryCode } = req.body;
+      //const { email, continentId, countryCode } = req.body;
 
       // const country =
       //   await prismaClient.country.findFirst({
@@ -625,7 +542,7 @@ export const logout = [
     try {
       decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET!) as {
         id: number;
-        recipient: string;
+        email: string;
       };
     } catch (err) {
       return next(
@@ -640,7 +557,7 @@ export const logout = [
     const user = await getUserById(decoded.id);
     checkUserIfNotExist(user);
 
-    if (user!.email != decoded.recipient || user!.phone != decoded.recipient) {
+    if (user!.email != decoded.email) {
       return next(
         createError(
           "You are not authenticated user!",
@@ -672,54 +589,31 @@ export const logout = [
 ];
 
 export const forgetPassword = [
-  body("identifier")
-    .trim()
-    .notEmpty()
-    .withMessage("Email or phone number is required")
-    .bail()
-    .custom((value: string) => {
-      if (value.includes("@")) {
-        if (!validator.isEmail(value)) {
-          throw new Error("Invalid email address");
-        }
-        return true;
-      }
-
-      if (!/^\+[1-9]\d{7,14}$/.test(value)) {
-        throw new Error(
-          "Invalid phone number. Use format such as +819012345678",
-        );
-      }
-      return true;
-    }),
+  body("email").isEmail().withMessage("Invalid Email Address"),
   async (req: Request, res: Response, next: NextFunction) => {
     const errors = validationResult(req).array({ onlyFirstError: true });
     if (errors.length > 0) {
       return next(createError(errors[0].msg, 400, errorCode.invalid));
     }
-    const { identifier } = req.body;
-    const type: RegistrationType = identifier.includes("@") ? "email" : "phone";
+    const { email } = req.body;
 
-    const user = await getUserByValue(identifier, type);
+    const user = await getUserByEmail(email);
     checkUserIfNotExist(user);
-
-    const channel: OtpChannel =
-      type === "email" ? OtpChannel.EMAIL : OtpChannel.PHONE;
 
     const otp = 123456; // TODO: Remove this line and uncomment the above line when in production
     const salt = await bcrypt.genSalt(10);
     const hashedOtp = await bcrypt.hash(otp.toString(), salt);
     const token = generateToken();
 
-    const otpRow = await getOtpByValue(identifier);
+    const otpRow = await getOtpByEmail(email);
     let result;
     if (!otpRow) {
       const otpData: Prisma.OtpCreateInput = {
-        recipient: identifier,
+        email: email,
         otpCode: hashedOtp,
         rememberToken: token,
         purpose: "REGISTER",
-        channel,
+        attemptCount: 1,
       };
       result = await createOtp(otpData);
     } else {
@@ -728,7 +622,8 @@ export const forgetPassword = [
       const isSameDay = lastOtpRequest === today;
       checkOtpErrorIfSameDate(isSameDay, otpRow.attemptCount);
       if (!isSameDay) {
-        const otpData: any = {
+        const otpData: Prisma.OtpUpdateInput = {
+          purpose: "REGISTER",
           otpCode: hashedOtp,
           rememberToken: token,
           attemptCount: 1,
@@ -736,7 +631,7 @@ export const forgetPassword = [
         };
         result = await updateOtp(otpRow.id, otpData);
       } else {
-        if (otpRow.attemptCount === 5) {
+        if (otpRow.attemptCount >= 5) {
           return next(
             createError(
               "You have reached the maximum number of OTP requests for today. Please try again tomorrow.",
@@ -745,7 +640,8 @@ export const forgetPassword = [
             ),
           );
         } else {
-          const otpData: any = {
+          const otpData: Prisma.OtpUpdateInput = {
+            purpose: "REGISTER",
             otpCode: hashedOtp,
             rememberToken: token,
             attemptCount: {
@@ -757,31 +653,15 @@ export const forgetPassword = [
       }
     }
     res.status(200).json({
-      message: `OTP  successfully sent to ${identifier} for reset password!`,
-      value: result.recipient,
+      message: `OTP  successfully sent to ${email} for reset password!`,
+      email: result.email,
       token: result.rememberToken,
     });
   },
 ];
 
-
 export const verifyOtpPassword = [
-  body("type", "Invalid registration type")
-    .trim()
-    .notEmpty()
-    .isIn(["phone", "email"])
-    .withMessage("Registration type must be either phone or email"),
-  body("value").trim().notEmpty().withMessage("Value is required"),
-  body("value")
-    .if((value, { req }) => req.body.type === "phone")
-    .matches(/^[0-9]+$/)
-    .withMessage("Phone number must contain only digits")
-    .isLength({ min: 5, max: 12 })
-    .withMessage("Phone number must be between 5 and 12 digits"),
-  body("value")
-    .if((value, { req }) => req.body.type === "email")
-    .isEmail()
-    .withMessage("Invalid email address"),
+  body("email").isEmail().withMessage("Invalid email address"),
   body("otp", "Invalid Otp")
     .trim()
     .notEmpty()
@@ -794,12 +674,12 @@ export const verifyOtpPassword = [
       return next(createError(errors[0].msg, 400, errorCode.invalid));
     }
 
-    const { type, value, otp, token } = req.body;
+    const { email, otp, token } = req.body;
 
-    const user = await getUserByValue(value, type);
+    const user = await getUserByEmail(email);
     checkUserIfNotExist(user);
 
-    const otprow = await getOtpByValue(value);
+    const otprow = await getOtpByEmail(email);
     checkOtpExist(otprow);
     let result;
 
@@ -809,8 +689,8 @@ export const verifyOtpPassword = [
     checkOtpErrorIfSameDate(isSameDay, otprow!.requestError);
 
     if (otprow?.rememberToken !== token) {
-      const otpData = {
-        error: 5,
+      const otpData: Prisma.OtpUpdateInput = {
+        requestError: 5,
       };
       await updateOtp(otprow!.id, otpData);
     }
@@ -855,30 +735,15 @@ export const verifyOtpPassword = [
     result = await updateOtp(otprow!.id, otpData);
     res.status(200).json({
       message: "You are Successfully Verified for reset password!",
-      value: result.recipient,
+      email: result.email,
       token: result.verifyToken,
     });
   },
 ];
 
 export const resetPassword = [
-  body("type", "Invalid registration type")
-    .trim()
-    .notEmpty()
-    .isIn(["phone", "email"])
-    .withMessage("Registration type must be either phone or email"),
-  body("value").trim().notEmpty().withMessage("Value is required"),
-  body("value")
-    .if((value, { req }) => req.body.type === "phone")
-    .matches(/^[0-9]+$/)
-    .withMessage("Phone number must contain only digits")
-    .isLength({ min: 5, max: 12 })
-    .withMessage("Phone number must be between 5 and 12 digits"),
-  body("value")
-    .if((value, { req }) => req.body.type === "email")
-    .isEmail()
-    .withMessage("Invalid email address"),
-    body("password")
+  body("email").isEmail().withMessage("Invalid email address"),
+  body("password")
     .notEmpty()
     .withMessage("Password is required")
     .isLength({ min: 8, max: 72 })
@@ -892,18 +757,18 @@ export const resetPassword = [
     .matches(/[^A-Za-z0-9]/)
     .withMessage("Password must contain at least one special character"),
   body("token", "Invalid token").trim().notEmpty(),
-  async (req: Request, res: Response,next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     const errors = validationResult(req).array({ onlyFirstError: true });
     if (errors.length > 0) {
       return next(createError(errors[0].msg, 400, errorCode.invalid));
     }
 
-    const { type, value, token, password } = req.body;
+    const { email, token, password } = req.body;
 
-    const user = await getUserByValue(value, type);
+    const user = await getUserByEmail(email);
     checkUserIfNotExist(user);
 
-    const otpRow = await getOtpByValue(value);
+    const otpRow = await getOtpByEmail(email);
     checkOtpExist(otpRow);
 
     if (otpRow?.verifyToken != token) {
@@ -932,8 +797,7 @@ export const resetPassword = [
 
     const refreshTokenPayload = {
       id: user!.id,
-      recipient:
-        user!.email === null || undefined ? user!.phone : user!.email,
+      email: email,
     };
 
     const accessToken = jwt.sign(
@@ -949,11 +813,11 @@ export const resetPassword = [
     ); //1 month
 
     const userData = {
-      password : hashPassword,
-      refreshToken
-    }
+      password: hashPassword,
+      refreshToken,
+    };
 
-    await updateUser(user!.id,userData);
+    await updateUser(user!.id, userData);
 
     res
       .cookie("accessToken", accessToken, {
@@ -973,5 +837,5 @@ export const resetPassword = [
         message: "Successfully created new account",
         userid: user!.id,
       });
-  }
-]
+  },
+];
