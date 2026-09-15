@@ -1,14 +1,9 @@
 import { Prisma } from "../../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 
-type RegisterType = "phone" | "email";
-
-export const getUserByValue = async (value: string, type: RegisterType) => {
+export const getUserByEmail = async (email: string) => {
   return await prismaClient.user.findUnique({
-    where:
-      type === "phone"
-        ? { phone: value }
-        : { email: value },
+    where: {email}
   });
 }
 
@@ -18,9 +13,9 @@ export const getUserById = async (id: number) => {
   })
 }
 
-export const getOtpByValue = async (recipient: string) => {
+export const getOtpByEmail = async (email: string) => {
   return await prismaClient.otp.findUnique({
-    where: { recipient },
+    where: { email },
   })
 }
 
@@ -36,7 +31,7 @@ export const createUser = async (userData: Prisma.UserCreateInput) => {
   })
 }
 
-export const updateOtp = async(id: number,otpData: any) => {
+export const updateOtp = async(id: number,otpData: Prisma.OtpUpdateInput) => {
   return await prismaClient.otp.update({
     where: { id },
     data: otpData
