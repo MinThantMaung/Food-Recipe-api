@@ -288,6 +288,7 @@ export const confirmPassword = [
 
     const userUpdateData = {
       refreshToken,
+      lastLogin: new Date(),
     };
 
     await updateUser(newUser.id, userUpdateData);
@@ -314,7 +315,11 @@ export const confirmPassword = [
 ];
 
 export const login = [
-  body("email").isEmail().withMessage("Invalid email address"),
+  body("email")
+    .trim()
+    .toLowerCase()
+    .isEmail()
+    .withMessage("Invalid email address"),
   body("password")
     .notEmpty()
     .withMessage("Password is required")
@@ -352,6 +357,7 @@ export const login = [
           errorLoginCount: 1,
         };
         await updateUser(user!.id, updateUserData);
+        return next(createError("Password is not correct!", 401, errorCode.unauthenticated));
       } else {
         if (user!.errorLoginCount >= 5) {
           const validTime = moment().diff(user!.updatedAt, "minutes") > 1;
@@ -411,7 +417,8 @@ export const login = [
 
     const userData = {
       errorLoginCount: 0,
-      randToken: refreshToken,
+      refreshToken: refreshToken,
+      lastLogin: new Date(),
     };
     await updateUser(user!.id, userData);
 
@@ -839,3 +846,26 @@ export const resetPassword = [
       });
   },
 ];
+
+interface CustomRequest extends Request {
+  userId?: number;
+}
+
+export const authCheck = async (
+  req: CustomRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  const userId = req.userId;
+  const user = await getUserById(userId!);
+  checkUserIfNotExist(user);
+
+  res
+    .status(200)
+    .json({
+      message: "You are authenticated.",
+      userId: user?.id,
+      username: user?.firstName + " " + user?.lastLogin,
+      image: user?.image,
+    });
+};
