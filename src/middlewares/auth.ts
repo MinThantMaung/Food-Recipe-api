@@ -27,7 +27,7 @@ export const auth = (req: CustomRequest, res: Response, next: NextFunction) => {
     try {
       decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET!) as {
         id: number;
-        phone: string;
+        email: string;
       };
     } catch (error) {
       return next(
@@ -60,7 +60,7 @@ export const auth = (req: CustomRequest, res: Response, next: NextFunction) => {
       );
     }
  
-    if (user.phone !== decoded.phone) {
+    if (user.email !== decoded.email) {
       return next(
         createError(
           "You are not an authenticated user.",
