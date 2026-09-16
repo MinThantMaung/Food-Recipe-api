@@ -59,6 +59,7 @@ model User {
   image               String?
   verifiedAt          DateTime?
   countryId           Int?
+  lastLogin           DateTime?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
   country             Country?             @relation(fields: [countryId], references: [id])
