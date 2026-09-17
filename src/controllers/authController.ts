@@ -26,6 +26,7 @@ import {
 import { generateOtpCode, generateToken } from "../utils/generate";
 import { Prisma } from "../../generated/prisma/client";
 import { UserCreateInput } from "../../generated/prisma/models";
+import { sendOtpEmail } from "../services/mailService";
 
 export const register = [
   body("email")
@@ -46,7 +47,7 @@ export const register = [
     const user = await getUserByEmail(email);
     checkUserIfExist(user);
 
-    const otpCode = generateOtpCode;
+    const otpCode = generateOtpCode();
     const salt = await bcrypt.genSalt(10);
     const hashedOtp = await bcrypt.hash(otpCode.toString(), salt);
     const token = generateToken();
@@ -97,6 +98,7 @@ export const register = [
         }
       }
     }
+    await sendOtpEmail(email, otpCode);
 
     res.status(200).json({
       message: `OTP  successfully sent to ${email}!`,
