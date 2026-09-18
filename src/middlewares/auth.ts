@@ -82,7 +82,7 @@ export const auth = (req: CustomRequest, res: Response, next: NextFunction) => {
  
     // Authorization token
     const accessTokenPayload = { id: user.id };
-    const refreshTokenPayload = { id: user.id, phone: user.phone };
+    const refreshTokenPayload = { id: user.id, email: user.email };
  
     const newAccessToken = jwt.sign(
       accessTokenPayload,
@@ -101,7 +101,7 @@ export const auth = (req: CustomRequest, res: Response, next: NextFunction) => {
     );
  
     const userData = {
-      randToken: newRefreshToken,
+      refreshToken: newRefreshToken,
     };
  
     await updateUser(user.id, userData);
