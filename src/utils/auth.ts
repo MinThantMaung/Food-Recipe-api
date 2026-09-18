@@ -33,7 +33,7 @@ export const checkOtpExist = (otpRow : any) => {
   if (!otpRow) {
     const error: any = new Error("Invalid verification code or verification code has expired");
     error.status = 400;
-    error.code = "invalidOtp";
+    error.code = errorCode.invalid;
     throw error;
   }
 }
