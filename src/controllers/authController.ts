@@ -162,7 +162,7 @@ export const verifyOtp = [
         createError(
           "OTP has expired. Please request a new one.",
           403,
-          "otpExpired",
+          errorCode.otpExpired,
         ),
       );
     }
@@ -341,7 +341,7 @@ export const login = [
     if (!user?.password) {
       return next(
         createError(
-          "Invalid email/phone or password",
+          "Invalid email or password",
           401,
           errorCode.unauthenticated,
         ),
@@ -349,30 +349,31 @@ export const login = [
     }
 
     const isMatchPassword = await bcrypt.compare(password, user!.password);
+    const validTime = moment().diff(user!.updatedAt, "minutes") > 1;
+
+    if (user!.errorLoginCount >= 5) {
+      if (!validTime) {
+        return next(
+          createError("Please try again later", 429, errorCode.overLimit),
+        );
+      }
+    }
+
     if (!isMatchPassword) {
       const today = new Date().toLocaleDateString();
       const lastRequest = user!.updatedAt.toLocaleDateString();
       const sameDay = today === lastRequest;
-
       if (!sameDay) {
         const updateUserData = {
           errorLoginCount: 1,
         };
         await updateUser(user!.id, updateUserData);
-        return next(createError("Password is not correct!", 401, errorCode.unauthenticated));
       } else {
         if (user!.errorLoginCount >= 5) {
-          const validTime = moment().diff(user!.updatedAt, "minutes") > 1;
-          if (!validTime) {
-            return next(
-              createError("Please try again later", 429, errorCode.overLimit),
-            );
-          } else {
-            const userData = {
-              errorLoginCount: 1,
-            };
-            await updateUser(user!.id, userData);
-          }
+          const userData = {
+            errorLoginCount: 1,
+          };
+          await updateUser(user!.id, userData);
         } else {
           const userData = {
             errorLoginCount: {
@@ -856,18 +857,83 @@ interface CustomRequest extends Request {
 export const authCheck = async (
   req: CustomRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   const userId = req.userId;
   const user = await getUserById(userId!);
   checkUserIfNotExist(user);
 
-  res
-    .status(200)
-    .json({
-      message: "You are authenticated.",
-      userId: user?.id,
-      username: user?.firstName + " " + user?.lastLogin,
-      image: user?.image,
+  res.status(200).json({
+    message: "You are authenticated.",
+    userId: user?.id,
+    username: user?.firstName + " " + user?.lastLogin,
+    image: user?.image,
+  });
+};
+
+export const resendOtp = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const { email, token } = req.body();
+
+  const otpCode = generateOtpCode();
+  const salt = await bcrypt.genSalt(10);
+  const hashedOtp = await bcrypt.hash(otpCode.toString(), salt);
+  const refreshToken = generateToken();
+  let result;
+
+  const otprow = await getOtpByEmail(email);
+  if (!otprow) {
+    const otpData: Prisma.OtpCreateInput = {
+      email: email,
+      otpCode: hashedOtp,
+      rememberToken: token,
+      purpose: "REGISTER",
+    };
+    result = await createOtp(otpData);
+  } else {
+    const lastOtpRequest = new Date(otprow.updatedAt).toLocaleDateString();
+    const today = new Date().toLocaleDateString();
+    const isSameDay = lastOtpRequest === today;
+    checkOtpErrorIfSameDate(isSameDay, otprow.attemptCount);
+    if (!isSameDay) {
+      const otpData: Prisma.OtpUpdateInput = {
+        purpose: "REGISTER",
+        otpCode: hashedOtp,
+        rememberToken: token,
+        attemptCount: 1,
+        requestError: 0,
+      };
+      result = await updateOtp(otprow.id, otpData);
+    } else {
+      if (otprow.attemptCount === 5) {
+        return next(
+          createError(
+            "You have reached the maximum number of OTP requests for today. Please try again later.",
+            400,
+            errorCode.overLimit,
+          ),
+        );
+      } else {
+        const otpData: Prisma.OtpUpdateInput = {
+          purpose: "REGISTER",
+          otpCode: hashedOtp,
+          rememberToken: token,
+          attemptCount: {
+            increment: 1,
+          },
+        };
+        result = await updateOtp(otprow.id, otpData);
+      }
+    }
+  }
+  await sendOtpEmail(email, otpCode);
+  res.status(200).json({
+      message: `OTP  successfully sent to ${email}!`,
+      otp: otpCode,
+      email: result.email,
+      token: result.rememberToken,
     });
 };
