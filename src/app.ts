@@ -6,7 +6,8 @@ import compression from "compression";
 import cors from "cors";
 import morgan from "morgan";
 import routes  from "./routes/v1";
-import { limiter } from "./middlewares/rateLimiter";
+import { globalApiLimiter  } from "./middlewares/rateLimiter";
+import { errorHandler } from "./middlewares/error";
 
 export const app = express();
 
@@ -30,6 +31,10 @@ app.use(helmet());
 app.use(compression());
 app.use(cors(corsOptions));
 app.use(morgan("combined"));
-app.use(limiter)
+
+// Only API requests consume the global limit
+app.use("/api/v1", globalApiLimiter);
 
 app.use(routes);
+
+app.use(errorHandler);
