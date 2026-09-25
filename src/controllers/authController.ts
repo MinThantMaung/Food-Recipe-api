@@ -9,11 +9,13 @@ import jwt from "jsonwebtoken";
 import {
   createOtp,
   createUser,
+  getCountry,
   getOtpByEmail,
   getUserByEmail,
   getUserById,
   updateOtp,
   updateUser,
+  updateUserCountry,
 } from "../services/authServices";
 import {
   checkOtpErrorIfSameDate,
@@ -27,6 +29,10 @@ import { generateOtpCode, generateToken } from "../utils/generate";
 import { Prisma } from "../../generated/prisma/client";
 import { UserCreateInput } from "../../generated/prisma/models";
 import { sendOtpEmail } from "../services/mailService";
+
+interface CustomRequest extends Request {
+  userId?: number;
+}
 
 export const register = [
   body("email")
@@ -82,8 +88,8 @@ export const register = [
             createError(
               "You have reached the maximum number of OTP requests for today. Please try again tomorrow.",
               400,
-              errorCode.overLimit,
-            ),
+              errorCode.overLimit
+            )
           );
         } else {
           const otpData: Prisma.OtpUpdateInput = {
@@ -152,7 +158,7 @@ export const verifyOtp = [
       };
       await updateOtp(otprow!.id, otpData);
       return next(
-        createError("Invalid verification token.", 401, errorCode.attack),
+        createError("Invalid verification token.", 401, errorCode.attack)
       );
     }
 
@@ -162,8 +168,8 @@ export const verifyOtp = [
         createError(
           "OTP has expired. Please request a new one.",
           403,
-          errorCode.otpExpired,
-        ),
+          errorCode.otpExpired
+        )
       );
     }
     const isMatchOtp = await bcrypt.compare(otp, otprow?.otpCode || "");
@@ -241,7 +247,7 @@ export const confirmPassword = [
 
     if (otpRow?.verifyToken !== token) {
       return next(
-        createError("You are not authenticated user!", 400, errorCode.attack),
+        createError("You are not authenticated user!", 400, errorCode.attack)
       );
     }
 
@@ -251,8 +257,8 @@ export const confirmPassword = [
         createError(
           "Verification has expired. Please verify again.",
           403,
-          errorCode.otpExpired,
-        ),
+          errorCode.otpExpired
+        )
       );
     }
 
@@ -279,13 +285,13 @@ export const confirmPassword = [
     const accessToken = jwt.sign(
       accessTokenPayload,
       process.env.ACCESS_TOKEN_SECRET!,
-      { expiresIn: 60 * 15 },
+      { expiresIn: 60 * 15 }
     ); // 15min
 
     const refreshToken = jwt.sign(
       refreshTokenPayload,
       process.env.REFRESH_TOKEN_SECRET!,
-      { expiresIn: 60 * 60 * 30 * 24 },
+      { expiresIn: 60 * 60 * 30 * 24 }
     ); //1 month
 
     const userUpdateData = {
@@ -340,11 +346,7 @@ export const login = [
 
     if (!user?.password) {
       return next(
-        createError(
-          "Invalid email or password",
-          401,
-          errorCode.unauthenticated,
-        ),
+        createError("Invalid email or password", 401, errorCode.unauthenticated)
       );
     }
 
@@ -354,7 +356,7 @@ export const login = [
     if (user!.errorLoginCount >= 5) {
       if (!validTime) {
         return next(
-          createError("Please try again later", 429, errorCode.overLimit),
+          createError("Please try again later", 429, errorCode.overLimit)
         );
       }
     }
@@ -384,7 +386,7 @@ export const login = [
         }
       }
       return next(
-        createError("Password is not correct!", 401, errorCode.unauthenticated),
+        createError("Password is not correct!", 401, errorCode.unauthenticated)
       );
     }
 
@@ -393,8 +395,8 @@ export const login = [
         createError(
           "Your account has been frozen. Please contact support.",
           403,
-          errorCode.accountFreeze,
-        ),
+          errorCode.accountFreeze
+        )
       );
     }
 
@@ -410,12 +412,12 @@ export const login = [
     const accessToken = jwt.sign(
       accessTokenPayload,
       process.env.ACCESS_TOKEN_SECRET!,
-      { expiresIn: 60 * 15 },
+      { expiresIn: 60 * 15 }
     ); //15 minutes
     const refreshToken = jwt.sign(
       refreshTokenPayload,
       process.env.REFRESH_TOKEN_SECRET!,
-      { expiresIn: "30d" },
+      { expiresIn: "30d" }
     ); //30 days
 
     const userData = {
@@ -444,7 +446,6 @@ export const login = [
 ];
 
 export const countryContinent = [
-  body("email").isEmail().withMessage("Invalid Email"),
   body("continentId")
     .notEmpty()
     .withMessage("Continent is required")
@@ -464,7 +465,7 @@ export const countryContinent = [
     .isLength({ min: 2, max: 2 })
     .withMessage("Country code must contain exactly 2 letters")
     .toUpperCase(),
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: CustomRequest, res: Response, next: NextFunction) => {
     try {
       const errors = validationResult(req).array({
         onlyFirstError: true,
@@ -474,58 +475,28 @@ export const countryContinent = [
         return next(createError(errors[0].msg, 400, errorCode.invalid));
       }
 
-      //const { email, continentId, countryCode } = req.body;
+      if (!req.userId) {
+        return next(createError("Unauthenticated", 401, errorCode.invalid));
+      }
 
-      // const country =
-      //   await prismaClient.country.findFirst({
-      //     where: {
-      //       code: countryCode,
-      //       continentId,
-      //     },
-      //     select: {
-      //       id: true,
-      //       name: true,
-      //       code: true,
-      //       continent: {
-      //         select: {
-      //           id: true,
-      //           name: true,
-      //         },
-      //       },
-      //     },
-      //   });
+      const { continentId, countryCode } = req.body;
 
-      // if (!country) {
-      //   return next(
-      //     createError(
-      //       "Selected country does not belong to the selected continent",
-      //       400,
-      //       errorCode.invalid
-      //     )
-      //   );
-      // }
+      const country = await getCountry(countryCode, continentId);
+      if (!country) {
+        return next(
+          createError(
+            "Selected country does not belong to the selected continent",
+            400,
+            errorCode.invalid
+          )
+        );
+      }
 
-      // const identityData =
-      //   type === "email"
-      //     ? {
-      //         email: value.toLowerCase(),
-      //       }
-      //     : {
-      //         phone: value,
-      //       };
-
-      // const userData: Prisma.UserCreateInput = {
-      //   ...identityData,
-
-      //   country: {
-      //     connect: {
-      //       id: country.id,
-      //     },
-      //   },
-      // };
+      const user = await updateUserCountry(req.userId, country.id);
 
       return res.status(200).json({
-        message: "Country and continent are valid",
+        message: "Country updated successfully",
+        userid: user.id,
       });
     } catch (error) {
       return next(error);
@@ -542,8 +513,8 @@ export const logout = [
         createError(
           "You are not authenticated user!",
           401,
-          errorCode.unauthenticated,
-        ),
+          errorCode.unauthenticated
+        )
       );
     }
 
@@ -559,8 +530,8 @@ export const logout = [
         createError(
           "You are not authenticated user!",
           401,
-          errorCode.unauthenticated,
-        ),
+          errorCode.unauthenticated
+        )
       );
     }
 
@@ -572,8 +543,8 @@ export const logout = [
         createError(
           "You are not authenticated user!",
           401,
-          errorCode.unauthenticated,
-        ),
+          errorCode.unauthenticated
+        )
       );
     }
 
@@ -610,9 +581,9 @@ export const forgetPassword = [
     const user = await getUserByEmail(email);
     checkUserIfNotExist(user);
 
-    const otp = 123456; // TODO: Remove this line and uncomment the above line when in production
+    const otpCode = generateOtpCode();
     const salt = await bcrypt.genSalt(10);
-    const hashedOtp = await bcrypt.hash(otp.toString(), salt);
+    const hashedOtp = await bcrypt.hash(otpCode.toString(), salt);
     const token = generateToken();
 
     const otpRow = await getOtpByEmail(email);
@@ -646,8 +617,8 @@ export const forgetPassword = [
             createError(
               "You have reached the maximum number of OTP requests for today. Please try again tomorrow.",
               400,
-              errorCode.overLimit,
-            ),
+              errorCode.overLimit
+            )
           );
         } else {
           const otpData: Prisma.OtpUpdateInput = {
@@ -711,8 +682,8 @@ export const verifyOtpPassword = [
         createError(
           "OTP has expired. Please request a new one.",
           403,
-          "otpExpired",
-        ),
+          "otpExpired"
+        )
       );
     }
     const isMatchOtp = await bcrypt.compare(otp, otprow?.otpCode || "");
@@ -783,7 +754,7 @@ export const resetPassword = [
 
     if (otpRow?.verifyToken != token) {
       return next(
-        createError("You are not authenticated user!", 400, errorCode.attack),
+        createError("You are not authenticated user!", 400, errorCode.attack)
       );
     }
 
@@ -793,8 +764,8 @@ export const resetPassword = [
         createError(
           "OTP has expired. Please request a new one.",
           403,
-          "otpExpired",
-        ),
+          "otpExpired"
+        )
       );
     }
 
@@ -813,13 +784,13 @@ export const resetPassword = [
     const accessToken = jwt.sign(
       accessTokenPayload,
       process.env.ACCESS_TOKEN_SECRET!,
-      { expiresIn: 60 * 15 },
+      { expiresIn: 60 * 15 }
     ); // 15min
 
     const refreshToken = jwt.sign(
       refreshTokenPayload,
       process.env.REFRESH_TOKEN_SECRET!,
-      { expiresIn: 60 * 60 * 30 * 24 },
+      { expiresIn: 60 * 60 * 30 * 24 }
     ); //1 month
 
     const userData = {
@@ -850,14 +821,10 @@ export const resetPassword = [
   },
 ];
 
-interface CustomRequest extends Request {
-  userId?: number;
-}
-
 export const authCheck = async (
   req: CustomRequest,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   const userId = req.userId;
   const user = await getUserById(userId!);
@@ -871,69 +838,89 @@ export const authCheck = async (
   });
 };
 
-export const resendOtp = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  const { email, token } = req.body();
+export const resendOtp = [
+  body("email").isEmail().withMessage("Invalid email address"),
+  body("token", "Invalid token").trim().notEmpty(),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const errors = validationResult(req).array({ onlyFirstError: true });
+      if (errors.length > 0) {
+        return next(createError(errors[0].msg, 400, errorCode.invalid));
+      }
+      const { email, token } = req.body;
 
-  const otpCode = generateOtpCode();
-  const salt = await bcrypt.genSalt(10);
-  const hashedOtp = await bcrypt.hash(otpCode.toString(), salt);
-  const refreshToken = generateToken();
-  let result;
+      const otpCode = generateOtpCode();
+      const salt = await bcrypt.genSalt(10);
+      const hashedOtp = await bcrypt.hash(otpCode.toString(), salt);
+      const rememberToken = generateToken();
+      let result;
 
-  const otprow = await getOtpByEmail(email);
-  if (!otprow) {
-    const otpData: Prisma.OtpCreateInput = {
-      email: email,
-      otpCode: hashedOtp,
-      rememberToken: token,
-      purpose: "REGISTER",
-    };
-    result = await createOtp(otpData);
-  } else {
-    const lastOtpRequest = new Date(otprow.updatedAt).toLocaleDateString();
-    const today = new Date().toLocaleDateString();
-    const isSameDay = lastOtpRequest === today;
-    checkOtpErrorIfSameDate(isSameDay, otprow.attemptCount);
-    if (!isSameDay) {
-      const otpData: Prisma.OtpUpdateInput = {
-        purpose: "REGISTER",
-        otpCode: hashedOtp,
-        rememberToken: token,
-        attemptCount: 1,
-        requestError: 0,
-      };
-      result = await updateOtp(otprow.id, otpData);
-    } else {
-      if (otprow.attemptCount === 5) {
+      const otprow = await getOtpByEmail(email);
+      if (!otprow) {
         return next(
           createError(
-            "You have reached the maximum number of OTP requests for today. Please try again later.",
-            400,
-            errorCode.overLimit,
-          ),
+            "OTP not found for the provided email.",
+            404,
+            errorCode.notfound
+          )
         );
-      } else {
+      }
+      if (token !== otprow?.rememberToken) {
+        const otpData: Prisma.OtpUpdateInput = {
+          attemptCount: 5,
+        };
+        await updateOtp(otprow!.id, otpData);
+        return next(
+          createError(
+            "You are not authenticated user!",
+            401,
+            errorCode.unauthenticated
+          )
+        );
+      }
+      const lastOtpRequest = new Date(otprow.updatedAt).toLocaleDateString();
+      const today = new Date().toLocaleDateString();
+      const isSameDay = lastOtpRequest === today;
+      checkOtpErrorIfSameDate(isSameDay, otprow.attemptCount);
+      if (!isSameDay) {
         const otpData: Prisma.OtpUpdateInput = {
           purpose: "REGISTER",
           otpCode: hashedOtp,
-          rememberToken: token,
-          attemptCount: {
-            increment: 1,
-          },
+          rememberToken: rememberToken,
+          attemptCount: 1,
+          requestError: 0,
         };
         result = await updateOtp(otprow.id, otpData);
+      } else {
+        if (otprow.attemptCount >= 5) {
+          return next(
+            createError(
+              "You have reached the maximum number of OTP requests for today. Please try again later.",
+              400,
+              errorCode.overLimit
+            )
+          );
+        } else {
+          const otpData: Prisma.OtpUpdateInput = {
+            purpose: "REGISTER",
+            otpCode: hashedOtp,
+            rememberToken: rememberToken,
+            attemptCount: {
+              increment: 1,
+            },
+          };
+          result = await updateOtp(otprow.id, otpData);
+        }
       }
+      await sendOtpEmail(email, otpCode);
+      res.status(200).json({
+        message: `OTP  successfully sent to ${email}!`,
+        otp: otpCode,
+        email: result.email,
+        token: result.rememberToken,
+      });
+    } catch (error) {
+      return next(error);
     }
-  }
-  await sendOtpEmail(email, otpCode);
-  res.status(200).json({
-      message: `OTP  successfully sent to ${email}!`,
-      otp: otpCode,
-      email: result.email,
-      token: result.rememberToken,
-    });
-};
+  },
+];
