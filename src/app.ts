@@ -11,7 +11,9 @@ import { errorHandler } from "./middlewares/error";
 
 export const app = express();
 
-var whitelist = ['http://example1.com', process.env.FRONTEND_URL]
+console.log("FRONTEND_URL:", process.env.FRONTEND_URL);
+
+var whitelist = [process.env.FRONTEND_URL]
 var corsOptions = {
   origin: function (origin:any, callback:(err: Error | null, origin?: any) => void) {
     if (!origin) return callback(null, true);
