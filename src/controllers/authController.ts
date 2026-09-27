@@ -593,7 +593,7 @@ export const forgetPassword = [
         email: email,
         otpCode: hashedOtp,
         rememberToken: token,
-        purpose: "REGISTER",
+        purpose: "RESET_PASSWORD",
         attemptCount: 1,
       };
       result = await createOtp(otpData);
@@ -604,7 +604,7 @@ export const forgetPassword = [
       checkOtpErrorIfSameDate(isSameDay, otpRow.attemptCount);
       if (!isSameDay) {
         const otpData: Prisma.OtpUpdateInput = {
-          purpose: "REGISTER",
+          purpose: "RESET_PASSWORD",
           otpCode: hashedOtp,
           rememberToken: token,
           attemptCount: 1,
@@ -622,7 +622,7 @@ export const forgetPassword = [
           );
         } else {
           const otpData: Prisma.OtpUpdateInput = {
-            purpose: "REGISTER",
+            purpose: "RESET_PASSWORD",
             otpCode: hashedOtp,
             rememberToken: token,
             attemptCount: {
@@ -633,8 +633,10 @@ export const forgetPassword = [
         }
       }
     }
+    await sendOtpEmail(email, otpCode);
     res.status(200).json({
       message: `OTP  successfully sent to ${email} for reset password!`,
+      otpCode: otpCode,
       email: result.email,
       token: result.rememberToken,
     });
