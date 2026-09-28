@@ -814,7 +814,7 @@ export const verifyOtpPassword = [
         })
         .status(201)
         .json({
-          message: "Successfully created new account",
+          message: "Successfully Reset Password",
           userid: user!.id,
         });
     },
