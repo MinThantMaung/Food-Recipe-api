@@ -672,10 +672,7 @@ export const verifyOtpPassword = [
     checkOtpErrorIfSameDate(isSameDay, otprow!.requestError);
 
     if (otprow?.rememberToken !== token) {
-      const otpData: Prisma.OtpUpdateInput = {
-        requestError: 5,
-      };
-      await updateOtp(otprow!.id, otpData);
+      return next(createError("Invalid or expired verification request", 400, errorCode.attack));
     }
 
     const isExpired = moment().diff(otprow?.updatedAt, "minutes") > 1;
@@ -704,7 +701,7 @@ export const verifyOtpPassword = [
         };
         await updateOtp(otprow!.id, otpData);
       }
-      return next(createError("OTP is not correct!", 401, "invalidOtp"));
+      return next(createError("OTP is not correct!", 401, errorCode.invalid));
     }
 
     const verifyToken = generateToken();
@@ -724,104 +721,104 @@ export const verifyOtpPassword = [
   },
 ];
 
-export const resetPassword = [
-  body("email").isEmail().withMessage("Invalid email address"),
-  body("password")
-    .notEmpty()
-    .withMessage("Password is required")
-    .isLength({ min: 8, max: 72 })
-    .withMessage("Password must be between 8 and 72 characters")
-    .matches(/[a-z]/)
-    .withMessage("Password must contain at least one lowercase letter")
-    .matches(/[A-Z]/)
-    .withMessage("Password must contain at least one uppercase letter")
-    .matches(/[0-9]/)
-    .withMessage("Password must contain at least one number")
-    .matches(/[^A-Za-z0-9]/)
-    .withMessage("Password must contain at least one special character"),
-  body("token", "Invalid token").trim().notEmpty(),
-  async (req: Request, res: Response, next: NextFunction) => {
-    const errors = validationResult(req).array({ onlyFirstError: true });
-    if (errors.length > 0) {
-      return next(createError(errors[0].msg, 400, errorCode.invalid));
-    }
+  export const resetPassword = [
+    body("email").isEmail().withMessage("Invalid email address"),
+    body("password")
+      .notEmpty()
+      .withMessage("Password is required")
+      .isLength({ min: 8, max: 72 })
+      .withMessage("Password must be between 8 and 72 characters")
+      .matches(/[a-z]/)
+      .withMessage("Password must contain at least one lowercase letter")
+      .matches(/[A-Z]/)
+      .withMessage("Password must contain at least one uppercase letter")
+      .matches(/[0-9]/)
+      .withMessage("Password must contain at least one number")
+      .matches(/[^A-Za-z0-9]/)
+      .withMessage("Password must contain at least one special character"),
+    body("token", "Invalid token").trim().notEmpty(),
+    async (req: Request, res: Response, next: NextFunction) => {
+      const errors = validationResult(req).array({ onlyFirstError: true });
+      if (errors.length > 0) {
+        return next(createError(errors[0].msg, 400, errorCode.invalid));
+      }
 
-    const { email, token, password } = req.body;
+      const { email, token, password } = req.body;
 
-    const user = await getUserByEmail(email);
-    checkUserIfNotExist(user);
+      const user = await getUserByEmail(email);
+      checkUserIfNotExist(user);
 
-    const otpRow = await getOtpByEmail(email);
-    checkOtpExist(otpRow);
+      const otpRow = await getOtpByEmail(email);
+      checkOtpExist(otpRow);
 
-    if (otpRow?.verifyToken != token) {
-      return next(
-        createError("You are not authenticated user!", 400, errorCode.attack)
-      );
-    }
+      if (otpRow?.verifyToken != token) {
+        return next(
+          createError("You are not authenticated user!", 400, errorCode.attack)
+        );
+      }
 
-    const isExpired = moment().diff(otpRow?.updatedAt, "minutes") > 1;
-    if (isExpired) {
-      return next(
-        createError(
-          "OTP has expired. Please request a new one.",
-          403,
-          "otpExpired"
-        )
-      );
-    }
+      const isExpired = moment().diff(otpRow?.updatedAt, "minutes") > 1;
+      if (isExpired) {
+        return next(
+          createError(
+            "OTP has expired. Please request a new one.",
+            403,
+            "otpExpired"
+          )
+        );
+      }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashPassword = await bcrypt.hash(password, salt);
+      const salt = await bcrypt.genSalt(10);
+      const hashPassword = await bcrypt.hash(password, salt);
 
-    const accessTokenPayload = {
-      id: user!.id,
-    };
+      const accessTokenPayload = {
+        id: user!.id,
+      };
 
-    const refreshTokenPayload = {
-      id: user!.id,
-      email: email,
-    };
+      const refreshTokenPayload = {
+        id: user!.id,
+        email: email,
+      };
 
-    const accessToken = jwt.sign(
-      accessTokenPayload,
-      process.env.ACCESS_TOKEN_SECRET!,
-      { expiresIn: 60 * 15 }
-    ); // 15min
+      const accessToken = jwt.sign(
+        accessTokenPayload,
+        process.env.ACCESS_TOKEN_SECRET!,
+        { expiresIn: 60 * 15 }
+      ); // 15min
 
-    const refreshToken = jwt.sign(
-      refreshTokenPayload,
-      process.env.REFRESH_TOKEN_SECRET!,
-      { expiresIn: 60 * 60 * 30 * 24 }
-    ); //1 month
+      const refreshToken = jwt.sign(
+        refreshTokenPayload,
+        process.env.REFRESH_TOKEN_SECRET!,
+        { expiresIn: 60 * 60 * 30 * 24 }
+      ); //1 month
 
-    const userData = {
-      password: hashPassword,
-      refreshToken,
-    };
+      const userData = {
+        password: hashPassword,
+        refreshToken,
+      };
 
-    await updateUser(user!.id, userData);
+      await updateUser(user!.id, userData);
 
-    res
-      .cookie("accessToken", accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-        maxAge: 15 * 60 * 1000,
-      })
-      .cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-        maxAge: 30 * 24 * 60 * 60 * 1000, //30days
-      })
-      .status(201)
-      .json({
-        message: "Successfully created new account",
-        userid: user!.id,
-      });
-  },
-];
+      res
+        .cookie("accessToken", accessToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+          maxAge: 15 * 60 * 1000,
+        })
+        .cookie("refreshToken", refreshToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+          maxAge: 30 * 24 * 60 * 60 * 1000, //30days
+        })
+        .status(201)
+        .json({
+          message: "Successfully created new account",
+          userid: user!.id,
+        });
+    },
+  ];
 
 export const authCheck = async (
   req: CustomRequest,
