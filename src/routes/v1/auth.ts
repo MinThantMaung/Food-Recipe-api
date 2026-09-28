@@ -11,8 +11,8 @@ router.post('/confirm-password', confirmPassword);
 router.post('/login',loginLimiter, login);
 router.post('/logout', logout);
 router.post('/forgot-password', forgetPassword);
-router.post('verify',verifyOtpPassword);
-router.post('reset-password',resetPassword)
+router.post('/verify',verifyOtpPassword);
+router.post('/reset-password',resetPassword)
 router.post('/resend-otp', resendOtp);
 
 //google login route
