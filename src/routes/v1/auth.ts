@@ -1,5 +1,5 @@
 import express from 'express';
-import { authCheck, confirmPassword, forgetPassword, login, logout, register, resendOtp, resetPassword, verifyOtp, verifyOtpPassword } from '../../controllers/authController';
+import { authCheck, confirmPassword, countryContinent, forgetPassword, login, logout, register, resendOtp, resetPassword, verifyOtp, verifyOtpPassword } from '../../controllers/authController';
 import { auth } from '../../middlewares/auth';
 import { loginLimiter } from '../../middlewares/rateLimiter';
 
@@ -14,6 +14,7 @@ router.post('/forgot-password', forgetPassword);
 router.post('/verify',verifyOtpPassword);
 router.post('/reset-password',resetPassword)
 router.post('/resend-otp', resendOtp);
+router.post('/update-country', countryContinent);
 
 //google login route
 //router.post("/auth/google", googleLogin);
