@@ -45,7 +45,10 @@ export const updateUser = async (id: number, userData: any) => {
   });
 };
 
-export const getCountry = async (countryCode: string, continentId: number) => {
+export const getCountry = async (
+  countryCode: string,
+  continentId: number
+) => {
   return prismaClient.country.findFirst({
     where: {
       code: countryCode,
