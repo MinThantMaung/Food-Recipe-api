@@ -22,8 +22,6 @@ import {
   checkOtpExist,
   checkUserIfExist,
   checkUserIfNotExist,
-  Continent,
-  COUNTRIES_BY_CONTINENT,
 } from "../utils/auth";
 import { generateOtpCode, generateToken } from "../utils/generate";
 import { Prisma } from "../../generated/prisma/client";
@@ -83,13 +81,13 @@ export const register = [
         };
         result = await updateOtp(otprow.id, otpData);
       } else {
-        if (otprow.attemptCount === 5) {
+        if (otprow.attemptCount >= 5) {
           return next(
             createError(
               "You have reached the maximum number of OTP requests for today. Please try again tomorrow.",
               400,
-              errorCode.overLimit
-            )
+              errorCode.overLimit,
+            ),
           );
         } else {
           const otpData: Prisma.OtpUpdateInput = {
@@ -108,7 +106,6 @@ export const register = [
 
     res.status(200).json({
       message: `OTP  successfully sent to ${email}!`,
-      otp: otpCode,
       email: result.email,
       token: result.rememberToken,
     });
@@ -158,7 +155,7 @@ export const verifyOtp = [
       };
       await updateOtp(otprow!.id, otpData);
       return next(
-        createError("Invalid verification token.", 401, errorCode.attack)
+        createError("Invalid verification token.", 401, errorCode.attack),
       );
     }
 
@@ -168,8 +165,8 @@ export const verifyOtp = [
         createError(
           "OTP has expired. Please request a new one.",
           403,
-          errorCode.otpExpired
-        )
+          errorCode.otpExpired,
+        ),
       );
     }
     const isMatchOtp = await bcrypt.compare(otp, otprow?.otpCode || "");
@@ -247,7 +244,7 @@ export const confirmPassword = [
 
     if (otpRow?.verifyToken !== token) {
       return next(
-        createError("You are not authenticated user!", 400, errorCode.attack)
+        createError("You are not authenticated user!", 400, errorCode.attack),
       );
     }
 
@@ -257,8 +254,8 @@ export const confirmPassword = [
         createError(
           "Verification has expired. Please verify again.",
           403,
-          errorCode.otpExpired
-        )
+          errorCode.otpExpired,
+        ),
       );
     }
 
@@ -273,52 +270,12 @@ export const confirmPassword = [
 
     const newUser = await createUser(userData);
 
-    const accessTokenPayload = {
-      id: newUser.id,
-    };
-
-    const refreshTokenPayload = {
-      id: newUser.id,
+    res.status(201).json({
+      message: "Successfully created new account",
+      userId: newUser.id,
+      token: otpRow.verifyToken,
       email: newUser.email,
-    };
-
-    const accessToken = jwt.sign(
-      accessTokenPayload,
-      process.env.ACCESS_TOKEN_SECRET!,
-      { expiresIn: 60 * 15 }
-    ); // 15min
-
-    const refreshToken = jwt.sign(
-      refreshTokenPayload,
-      process.env.REFRESH_TOKEN_SECRET!,
-      { expiresIn: 60 * 60 * 30 * 24 }
-    ); //1 month
-
-    const userUpdateData = {
-      refreshToken,
-      lastLogin: new Date(),
-    };
-
-    await updateUser(newUser.id, userUpdateData);
-
-    res
-      .cookie("accessToken", accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-        maxAge: 15 * 60 * 1000,
-      })
-      .cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-        maxAge: 30 * 24 * 60 * 60 * 1000, //30days
-      })
-      .status(201)
-      .json({
-        message: "Successfully created new account",
-        userid: newUser.id,
-      });
+    });
   },
 ];
 
@@ -346,7 +303,11 @@ export const login = [
 
     if (!user?.password) {
       return next(
-        createError("Invalid email or password", 401, errorCode.unauthenticated)
+        createError(
+          "Invalid email or password",
+          401,
+          errorCode.unauthenticated,
+        ),
       );
     }
 
@@ -356,7 +317,7 @@ export const login = [
     if (user!.errorLoginCount >= 5) {
       if (!validTime) {
         return next(
-          createError("Please try again later", 429, errorCode.overLimit)
+          createError("Please try again later", 429, errorCode.overLimit),
         );
       }
     }
@@ -386,7 +347,7 @@ export const login = [
         }
       }
       return next(
-        createError("Password is not correct!", 401, errorCode.unauthenticated)
+        createError("Password is not correct!", 401, errorCode.unauthenticated),
       );
     }
 
@@ -395,8 +356,8 @@ export const login = [
         createError(
           "Your account has been frozen. Please contact support.",
           403,
-          errorCode.accountFreeze
-        )
+          errorCode.accountFreeze,
+        ),
       );
     }
 
@@ -412,12 +373,12 @@ export const login = [
     const accessToken = jwt.sign(
       accessTokenPayload,
       process.env.ACCESS_TOKEN_SECRET!,
-      { expiresIn: 60 * 15 }
+      { expiresIn: 60 * 15 },
     ); //15 minutes
     const refreshToken = jwt.sign(
       refreshTokenPayload,
       process.env.REFRESH_TOKEN_SECRET!,
-      { expiresIn: "30d" }
+      { expiresIn: "30d" },
     ); //30 days
 
     const userData = {
@@ -454,17 +415,24 @@ export const countryContinent = [
     .withMessage("Invalid continent ID")
     .toInt(),
   body("countryCode")
-    .isString()
-    .withMessage("Country code must be a string")
+  .isString()
+  .withMessage("Country code must be a string")
+  .bail()
+  .trim()
+  .notEmpty()
+  .withMessage("Country is required")
+  .bail()
+  .isAlpha()
+  .withMessage("Country code must contain only letters")
+  .isLength({ min: 2, max: 2 })
+  .withMessage("Country code must contain exactly 2 letters")
+  .toUpperCase(),
+  body("email")
     .trim()
-    .notEmpty()
-    .withMessage("Country is required")
-    .bail()
-    .isAlpha()
-    .withMessage("Country code must contain only letters")
-    .isLength({ min: 2, max: 2 })
-    .withMessage("Country code must contain exactly 2 letters")
-    .toUpperCase(),
+    .toLowerCase()
+    .isEmail()
+    .withMessage("Invalid email address"),
+  body("token", "Invalid token").trim().notEmpty(),
   async (req: CustomRequest, res: Response, next: NextFunction) => {
     try {
       const errors = validationResult(req).array({
@@ -475,11 +443,27 @@ export const countryContinent = [
         return next(createError(errors[0].msg, 400, errorCode.invalid));
       }
 
-      if (!req.userId) {
-        return next(createError("Unauthenticated", 401, errorCode.invalid));
+      // if (!req.userId) {
+      //   return next(createError("Unauthenticated", 401, errorCode.invalid));
+      // }
+
+      const { continentId, countryCode, email, token } = req.body;
+
+      const user = await getUserByEmail(email);
+      checkUserIfNotExist(user);
+
+      const otpRow = await getOtpByEmail(email);
+      checkOtpExist(otpRow);
+
+      if (otpRow?.verifyToken !== token) {
+        return next(
+          createError("You are not authenticated user!", 400, errorCode.attack),
+        );
       }
 
-      const { continentId, countryCode } = req.body;
+      if (otpRow?.purpose !== "REGISTER") {
+        return next(createError("Wrong OTP usage!", 400, errorCode.invalid));
+      }
 
       const country = await getCountry(countryCode, continentId);
       if (!country) {
@@ -487,17 +471,59 @@ export const countryContinent = [
           createError(
             "Selected country does not belong to the selected continent",
             400,
-            errorCode.invalid
-          )
+            errorCode.invalid,
+          ),
         );
       }
 
-      const user = await updateUserCountry(req.userId, country.id);
+      await updateUserCountry(user!.id, country.id);
 
-      return res.status(200).json({
-        message: "Country updated successfully",
-        userid: user.id,
-      });
+      const accessTokenPayload = {
+        id: user!.id,
+      };
+
+      const refreshTokenPayload = {
+        id: user!.id,
+        email: user!.email,
+      };
+
+      const accessToken = jwt.sign(
+        accessTokenPayload,
+        process.env.ACCESS_TOKEN_SECRET!,
+        { expiresIn: 60 * 15 },
+      ); // 15min
+
+      const refreshToken = jwt.sign(
+        refreshTokenPayload,
+        process.env.REFRESH_TOKEN_SECRET!,
+        { expiresIn: 60 * 60 * 30 * 24 },
+      ); //1 month
+
+      const userUpdateData = {
+        refreshToken,
+        lastLogin: new Date(),
+      };
+
+      await updateUser(user!.id, userUpdateData);
+
+      res
+        .cookie("accessToken", accessToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+          maxAge: 15 * 60 * 1000,
+        })
+        .cookie("refreshToken", refreshToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+          maxAge: 30 * 24 * 60 * 60 * 1000, //30days
+        })
+        .status(200)
+        .json({
+          message: "Country Update Successfully!",
+          userid: user!.id,
+        });
     } catch (error) {
       return next(error);
     }
@@ -513,8 +539,8 @@ export const logout = [
         createError(
           "You are not authenticated user!",
           401,
-          errorCode.unauthenticated
-        )
+          errorCode.unauthenticated,
+        ),
       );
     }
 
@@ -530,8 +556,8 @@ export const logout = [
         createError(
           "You are not authenticated user!",
           401,
-          errorCode.unauthenticated
-        )
+          errorCode.unauthenticated,
+        ),
       );
     }
 
@@ -543,8 +569,8 @@ export const logout = [
         createError(
           "You are not authenticated user!",
           401,
-          errorCode.unauthenticated
-        )
+          errorCode.unauthenticated,
+        ),
       );
     }
 
@@ -617,8 +643,8 @@ export const forgetPassword = [
             createError(
               "You have reached the maximum number of OTP requests for today. Please try again tomorrow.",
               400,
-              errorCode.overLimit
-            )
+              errorCode.overLimit,
+            ),
           );
         } else {
           const otpData: Prisma.OtpUpdateInput = {
@@ -636,7 +662,6 @@ export const forgetPassword = [
     await sendOtpEmail(email, otpCode);
     res.status(200).json({
       message: `OTP  successfully sent to ${email} for reset password!`,
-      otpCode: otpCode,
       email: result.email,
       token: result.rememberToken,
     });
@@ -672,7 +697,13 @@ export const verifyOtpPassword = [
     checkOtpErrorIfSameDate(isSameDay, otprow!.requestError);
 
     if (otprow?.rememberToken !== token) {
-      return next(createError("Invalid or expired verification request", 400, errorCode.attack));
+      return next(
+        createError(
+          "Invalid or expired verification request",
+          400,
+          errorCode.attack,
+        ),
+      );
     }
 
     const isExpired = moment().diff(otprow?.updatedAt, "minutes") > 1;
@@ -681,8 +712,8 @@ export const verifyOtpPassword = [
         createError(
           "OTP has expired. Please request a new one.",
           403,
-          "otpExpired"
-        )
+          "otpExpired",
+        ),
       );
     }
     const isMatchOtp = await bcrypt.compare(otp, otprow?.otpCode || "");
@@ -721,109 +752,109 @@ export const verifyOtpPassword = [
   },
 ];
 
-  export const resetPassword = [
-    body("email").isEmail().withMessage("Invalid email address"),
-    body("password")
-      .notEmpty()
-      .withMessage("Password is required")
-      .isLength({ min: 8, max: 72 })
-      .withMessage("Password must be between 8 and 72 characters")
-      .matches(/[a-z]/)
-      .withMessage("Password must contain at least one lowercase letter")
-      .matches(/[A-Z]/)
-      .withMessage("Password must contain at least one uppercase letter")
-      .matches(/[0-9]/)
-      .withMessage("Password must contain at least one number")
-      .matches(/[^A-Za-z0-9]/)
-      .withMessage("Password must contain at least one special character"),
-    body("token", "Invalid token").trim().notEmpty(),
-    async (req: Request, res: Response, next: NextFunction) => {
-      const errors = validationResult(req).array({ onlyFirstError: true });
-      if (errors.length > 0) {
-        return next(createError(errors[0].msg, 400, errorCode.invalid));
-      }
+export const resetPassword = [
+  body("email").isEmail().withMessage("Invalid email address"),
+  body("password")
+    .notEmpty()
+    .withMessage("Password is required")
+    .isLength({ min: 8, max: 72 })
+    .withMessage("Password must be between 8 and 72 characters")
+    .matches(/[a-z]/)
+    .withMessage("Password must contain at least one lowercase letter")
+    .matches(/[A-Z]/)
+    .withMessage("Password must contain at least one uppercase letter")
+    .matches(/[0-9]/)
+    .withMessage("Password must contain at least one number")
+    .matches(/[^A-Za-z0-9]/)
+    .withMessage("Password must contain at least one special character"),
+  body("token", "Invalid token").trim().notEmpty(),
+  async (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req).array({ onlyFirstError: true });
+    if (errors.length > 0) {
+      return next(createError(errors[0].msg, 400, errorCode.invalid));
+    }
 
-      const { email, token, password } = req.body;
+    const { email, token, password } = req.body;
 
-      const user = await getUserByEmail(email);
-      checkUserIfNotExist(user);
+    const user = await getUserByEmail(email);
+    checkUserIfNotExist(user);
 
-      const otpRow = await getOtpByEmail(email);
-      checkOtpExist(otpRow);
+    const otpRow = await getOtpByEmail(email);
+    checkOtpExist(otpRow);
 
-      if (otpRow?.verifyToken != token) {
-        return next(
-          createError("You are not authenticated user!", 400, errorCode.attack)
-        );
-      }
+    if (otpRow?.verifyToken != token) {
+      return next(
+        createError("You are not authenticated user!", 400, errorCode.attack),
+      );
+    }
 
-      const isExpired = moment().diff(otpRow?.updatedAt, "minutes") > 1;
-      if (isExpired) {
-        return next(
-          createError(
-            "OTP has expired. Please request a new one.",
-            403,
-            "otpExpired"
-          )
-        );
-      }
+    const isExpired = moment().diff(otpRow?.updatedAt, "minutes") > 1;
+    if (isExpired) {
+      return next(
+        createError(
+          "OTP has expired. Please request a new one.",
+          403,
+          "otpExpired",
+        ),
+      );
+    }
 
-      const salt = await bcrypt.genSalt(10);
-      const hashPassword = await bcrypt.hash(password, salt);
+    const salt = await bcrypt.genSalt(10);
+    const hashPassword = await bcrypt.hash(password, salt);
 
-      const accessTokenPayload = {
-        id: user!.id,
-      };
+    const accessTokenPayload = {
+      id: user!.id,
+    };
 
-      const refreshTokenPayload = {
-        id: user!.id,
-        email: email,
-      };
+    const refreshTokenPayload = {
+      id: user!.id,
+      email: email,
+    };
 
-      const accessToken = jwt.sign(
-        accessTokenPayload,
-        process.env.ACCESS_TOKEN_SECRET!,
-        { expiresIn: 60 * 15 }
-      ); // 15min
+    const accessToken = jwt.sign(
+      accessTokenPayload,
+      process.env.ACCESS_TOKEN_SECRET!,
+      { expiresIn: 60 * 15 },
+    ); // 15min
 
-      const refreshToken = jwt.sign(
-        refreshTokenPayload,
-        process.env.REFRESH_TOKEN_SECRET!,
-        { expiresIn: 60 * 60 * 30 * 24 }
-      ); //1 month
+    const refreshToken = jwt.sign(
+      refreshTokenPayload,
+      process.env.REFRESH_TOKEN_SECRET!,
+      { expiresIn: 60 * 60 * 30 * 24 },
+    ); //1 month
 
-      const userData = {
-        password: hashPassword,
-        refreshToken,
-      };
+    const userData = {
+      password: hashPassword,
+      refreshToken,
+    };
 
-      await updateUser(user!.id, userData);
+    await updateUser(user!.id, userData);
 
-      res
-        .cookie("accessToken", accessToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-          maxAge: 15 * 60 * 1000,
-        })
-        .cookie("refreshToken", refreshToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-          maxAge: 30 * 24 * 60 * 60 * 1000, //30days
-        })
-        .status(201)
-        .json({
-          message: "Successfully Reset Password",
-          userid: user!.id,
-        });
-    },
-  ];
+    res
+      .cookie("accessToken", accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        maxAge: 15 * 60 * 1000,
+      })
+      .cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        maxAge: 30 * 24 * 60 * 60 * 1000, //30days
+      })
+      .status(201)
+      .json({
+        message: "Successfully Reset Password",
+        userid: user!.id,
+      });
+  },
+];
 
 export const authCheck = async (
   req: CustomRequest,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   const userId = req.userId;
   const user = await getUserById(userId!);
@@ -860,8 +891,8 @@ export const resendOtp = [
           createError(
             "OTP not found for the provided email.",
             404,
-            errorCode.notfound
-          )
+            errorCode.notfound,
+          ),
         );
       }
       if (token !== otprow?.rememberToken) {
@@ -873,8 +904,8 @@ export const resendOtp = [
           createError(
             "You are not authenticated user!",
             401,
-            errorCode.unauthenticated
-          )
+            errorCode.unauthenticated,
+          ),
         );
       }
       const lastOtpRequest = new Date(otprow.updatedAt).toLocaleDateString();
@@ -896,8 +927,8 @@ export const resendOtp = [
             createError(
               "You have reached the maximum number of OTP requests for today. Please try again later.",
               400,
-              errorCode.overLimit
-            )
+              errorCode.overLimit,
+            ),
           );
         } else {
           const otpData: Prisma.OtpUpdateInput = {
@@ -914,7 +945,6 @@ export const resendOtp = [
       await sendOtpEmail(email, otpCode);
       res.status(200).json({
         message: `OTP  successfully sent to ${email}!`,
-        otp: otpCode,
         email: result.email,
         token: result.rememberToken,
       });
