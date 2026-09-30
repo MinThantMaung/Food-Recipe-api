@@ -1,40 +1,34 @@
 import { errorCode } from "../../config/error";
-import { Prisma } from "../../generated/prisma/client";
+import type { User, Otp } from "../../generated/prisma/client";
+import { createError } from "./error";
 
-export enum Continent {
-  ASIA = "ASIA",
-  AFRICA = "AFRICA",
-  NORTH_AMERICA = "NORTH_AMERICA",
-  SOUTH_AMERICA = "SOUTH_AMERICA",
-  ANTARCTICA = "ANTARCTICA",
-  EUROPE = "EUROPE",
-  OCEANIA = "OCEANIA",
-}
-
-export const checkUserIfExist = (user : Prisma.UserCreateInput | null) => {
+export const checkUserIfExist = (user : User | null) => {
   if (user) {
-    const error: any = new Error("User already exist");
-    error.status = 404;
-    error.code = errorCode.notfound;
-    throw error;
+    throw createError(
+      "User already exists",
+      409,
+      errorCode.userExist
+    );
   }
 }
 
-export const checkUserIfNotExist = (user : Prisma.UserCreateInput | null) => {
+export const checkUserIfNotExist = (user : User| null) => {
   if(!user){
-    const error: any = new Error("User does not exist");
-    error.status = 409;
-    error.code = errorCode.notfound;
-    throw error;
+    throw createError(
+      "User does not exist",
+      404,
+      errorCode.notfound
+    );
   }
 }
 
-export const checkOtpExist = (otpRow : any) => {
+export const checkOtpExist = (otpRow : Otp | null) => {
   if (!otpRow) {
-    const error: any = new Error("Invalid verification code or verification code has expired");
-    error.status = 400;
-    error.code = errorCode.invalid;
-    throw error;
+    throw createError(
+      "Invalid verification code or verification code has expired",
+      400,
+      errorCode.invalid
+    );
   }
 }
 
@@ -42,56 +36,10 @@ export const checkOtpErrorIfSameDate = (
   isSameDate: boolean,
   errorCount: number
 ) => {
-  if (isSameDate && errorCount === 5) {
-    const error: any = new Error(
-      "You have reached the maximum number of OTP requests for today. Please try again tomorrow."
-    );
-    error.status = 401;
-    error.code = "overLimit";
-    throw error;
+  if (isSameDate && errorCount >= 5) {
+    throw createError("You have reached the maximum number of OTP requests for today. Please try again tomorrow.",
+      429,
+      errorCode.overLimit
+    )
   }
-};
-
-export const COUNTRIES_BY_CONTINENT: Record<
-  Continent,
-  readonly string[]
-> = {
-  [Continent.ASIA]: [
-    "Japan",
-    "Myanmar",
-    "China",
-    "Thailand",
-  ],
-
-  [Continent.AFRICA]: [
-    "Egypt",
-    "Nigeria",
-    "South Africa",
-  ],
-
-  [Continent.NORTH_AMERICA]: [
-    "Canada",
-    "United States",
-    "Mexico",
-  ],
-
-  [Continent.SOUTH_AMERICA]: [
-    "Brazil",
-    "Argentina",
-    "Chile",
-  ],
-
-  [Continent.ANTARCTICA]: [],
-
-  [Continent.EUROPE]: [
-    "France",
-    "Germany",
-    "Italy",
-  ],
-
-  [Continent.OCEANIA]: [
-    "Australia",
-    "New Zealand",
-    "Fiji",
-  ],
 };
