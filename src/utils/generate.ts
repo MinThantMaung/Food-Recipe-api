@@ -1,10 +1,9 @@
-import { randomBytes } from "crypto"
-import crypto from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 
-export const generateToken = () => {
-    return randomBytes(32).toString("hex");
-}
+export const generateToken = (): string => {
+  return randomBytes(32).toString("hex");
+};
 
 export const generateOtpCode = (): number => {
-  return crypto.randomInt(100000, 1000000);
+  return randomInt(100000, 1000000);
 };
