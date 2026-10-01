@@ -21,7 +21,7 @@ import {
   checkUserIfNotExist,
 } from "../utils/auth";
 import { generateOtpCode, generateToken } from "../utils/generate";
-import { Prisma } from "../../generated/prisma/client";
+import { Prisma, User } from "../../generated/prisma/client";
 import { UserCreateInput } from "../../generated/prisma/models";
 import { sendOtpEmail } from "../services/mailService";
 import {
@@ -29,7 +29,11 @@ import {
   updateUser,
   updateUserCountry,
 } from "../services/userServices";
-
+import {
+  createGoogleUserWithAccount,
+  linkedAccount,
+  verifyGoogleCredential,
+} from "../services/googleAuthService";
 interface CustomRequest extends Request {
   userId?: number;
 }
@@ -315,7 +319,7 @@ export const confirmPassword = [
       .status(201)
       .json({
         message: "Successfully created new account",
-        userId: newUser.id
+        userId: newUser.id,
       });
   },
 ];
@@ -948,3 +952,124 @@ export const resendOtp = [
     }
   },
 ];
+
+export const googleLogin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const credential = req.body?.credential;
+
+  if (typeof credential !== "string" || !credential.trim()) {
+    res.status(400).json({
+      message: "Google credential is required",
+    });
+    return;
+  }
+
+  // Handle Google verification separately from database errors.
+  let googleUser: Awaited<ReturnType<typeof verifyGoogleCredential>>;
+
+  try {
+    googleUser = await verifyGoogleCredential(credential);
+  } catch {
+    res.status(401).json({
+      message: "Google verification failed. Please try again.",
+    });
+    return;
+  }
+
+  try {
+    let user: User;
+
+    const linkedUserAccount = await linkedAccount(googleUser);
+
+    if (linkedUserAccount) {
+      user = linkedUserAccount.user;
+    } else {
+      const existingUser = await getUserByEmail(googleUser.email);
+
+      if (existingUser) {
+        res.status(409).json({
+          message:
+            "An account with this email already exists. Sign in using your existing method, then link Google from your profile.",
+        });
+        return;
+      }
+      
+      user = await createGoogleUserWithAccount(googleUser);
+    }
+
+    if (user.status !== "ACTIVE") {
+      res.status(403).json({
+        message: "Your account is not active.",
+      });
+      return;
+    }
+
+    const accessTokenSecret = process.env.ACCESS_TOKEN_SECRET;
+    const refreshTokenSecret = process.env.REFRESH_TOKEN_SECRET;
+
+    if (!accessTokenSecret || !refreshTokenSecret) {
+      throw new Error("JWT secrets are required");
+    }
+
+     const accessTokenPayload = {
+      id: user.id,
+    };
+
+    const refreshTokenPayload = {
+      id: user.id,
+      email: user.email,
+    };
+
+    const accessToken = jwt.sign(
+      accessTokenPayload,
+      accessTokenSecret,
+      { expiresIn: "15m" },
+    );
+
+    const refreshToken = jwt.sign(
+      refreshTokenPayload,
+      refreshTokenSecret,
+      { expiresIn: "30d" },
+    );
+
+    await updateUser(user.id, {
+      refreshToken,
+      lastLogin: new Date(),
+    });
+
+    const isProduction = process.env.NODE_ENV === "production";
+
+    res
+      .cookie("accessToken", accessToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? "none" : "strict",
+        path: "/",
+        maxAge: 15 * 60 * 1000,
+      })
+      .cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? "none" : "strict",
+        path: "/",
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+      })
+      .status(200)
+      .json({
+        message: "Signed in successfully",
+        authenticated: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          image: user.image,
+        },
+      });
+  } catch (error) {
+    next(error);
+  }
+};

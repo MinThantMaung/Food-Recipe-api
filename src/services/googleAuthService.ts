@@ -1,6 +1,9 @@
 import { OAuth2Client } from "google-auth-library";
+import { prismaClient } from "../lib/prisma";
 
 const clientId = process.env.GOOGLE_CLIENT_ID;
+
+type GoogleUser = Awaited<ReturnType<typeof verifyGoogleCredential>>;
 
 if (!clientId) {
   throw new Error("GOOGLE_CLIENT_ID is required");
@@ -28,3 +31,35 @@ export async function verifyGoogleCredential(credential: string) {
     image: payload.picture,
   };
 }
+
+export const linkedAccount = async (googleUser: any) => {
+  return await prismaClient.socialMediaAccount.findFirst({
+    where: {
+      provider: "GOOGLE",
+      providerAccountId: googleUser.googleId,
+    },
+    include: {
+      user: true,
+    },
+  });
+};
+
+export const createGoogleUserWithAccount = async (googleUser: GoogleUser) => {
+  return prismaClient.user.create({
+    data: {
+      email: googleUser.email,
+      firstName: googleUser.firstName ?? null,
+      lastName: googleUser.lastName ?? null,
+      image: googleUser.image ?? null,
+      password: null,
+      verifiedAt: new Date(),
+
+      socialMediaAccounts: {
+        create: {
+          provider: "GOOGLE",
+          providerAccountId: googleUser.googleId,
+        },
+      },
+    },
+  });
+};
