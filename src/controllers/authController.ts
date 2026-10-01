@@ -9,13 +9,10 @@ import jwt from "jsonwebtoken";
 import {
   createOtp,
   createUser,
-  getCountry,
   getOtpByEmail,
   getUserByEmail,
   getUserById,
   updateOtp,
-  updateUser,
-  updateUserCountry,
 } from "../services/authServices";
 import {
   checkOtpErrorIfSameDate,
@@ -27,6 +24,11 @@ import { generateOtpCode, generateToken } from "../utils/generate";
 import { Prisma } from "../../generated/prisma/client";
 import { UserCreateInput } from "../../generated/prisma/models";
 import { sendOtpEmail } from "../services/mailService";
+import {
+  getCountry,
+  updateUser,
+  updateUserCountry,
+} from "../services/userServices";
 
 interface CustomRequest extends Request {
   userId?: number;
@@ -159,7 +161,7 @@ export const verifyOtp = [
       );
     }
 
-    const isExpired = moment().diff(otprow?.updatedAt, "minutes") > 1;
+    const isExpired = moment().diff(otprow?.updatedAt, "minutes") > 3;
     if (isExpired) {
       return next(
         createError(
@@ -248,7 +250,7 @@ export const confirmPassword = [
       );
     }
 
-    const isExpired = moment().diff(otpRow?.verifyAt, "minutes") > 1;
+    const isExpired = moment().diff(otpRow?.verifyAt, "minutes") > 3;
     if (isExpired) {
       return next(
         createError(
@@ -270,12 +272,51 @@ export const confirmPassword = [
 
     const newUser = await createUser(userData);
 
-    res.status(201).json({
-      message: "Successfully created new account",
-      userId: newUser.id,
-      token: otpRow.verifyToken,
+    const accessTokenPayload = {
+      id: newUser.id,
+    };
+
+    const refreshTokenPayload = {
+      id: newUser!.id,
       email: newUser.email,
-    });
+    };
+
+    const accessToken = jwt.sign(
+      accessTokenPayload,
+      process.env.ACCESS_TOKEN_SECRET!,
+      { expiresIn: 60 * 15 },
+    ); // 15min
+
+    const refreshToken = jwt.sign(
+      refreshTokenPayload,
+      process.env.REFRESH_TOKEN_SECRET!,
+      { expiresIn: 60 * 60 * 30 * 24 },
+    ); //1 month
+
+    const userUpdateData = {
+      refreshToken,
+      lastLogin: new Date(),
+    };
+
+    await updateUser(newUser!.id, userUpdateData);
+    res
+      .cookie("accessToken", accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        maxAge: 15 * 60 * 1000,
+      })
+      .cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        maxAge: 30 * 24 * 60 * 60 * 1000, //30days
+      })
+      .status(201)
+      .json({
+        message: "Successfully created new account",
+        userId: newUser.id
+      });
   },
 ];
 
@@ -312,7 +353,7 @@ export const login = [
     }
 
     const isMatchPassword = await bcrypt.compare(password, user!.password);
-    const validTime = moment().diff(user!.updatedAt, "minutes") > 1;
+    const validTime = moment().diff(user!.updatedAt, "minutes") > 3;
 
     if (user!.errorLoginCount >= 5) {
       if (!validTime) {
@@ -415,18 +456,18 @@ export const countryContinent = [
     .withMessage("Invalid continent ID")
     .toInt(),
   body("countryCode")
-  .isString()
-  .withMessage("Country code must be a string")
-  .bail()
-  .trim()
-  .notEmpty()
-  .withMessage("Country is required")
-  .bail()
-  .isAlpha()
-  .withMessage("Country code must contain only letters")
-  .isLength({ min: 2, max: 2 })
-  .withMessage("Country code must contain exactly 2 letters")
-  .toUpperCase(),
+    .isString()
+    .withMessage("Country code must be a string")
+    .bail()
+    .trim()
+    .notEmpty()
+    .withMessage("Country is required")
+    .bail()
+    .isAlpha()
+    .withMessage("Country code must contain only letters")
+    .isLength({ min: 2, max: 2 })
+    .withMessage("Country code must contain exactly 2 letters")
+    .toUpperCase(),
   body("email")
     .trim()
     .toLowerCase()
@@ -442,10 +483,6 @@ export const countryContinent = [
       if (errors.length > 0) {
         return next(createError(errors[0].msg, 400, errorCode.invalid));
       }
-
-      // if (!req.userId) {
-      //   return next(createError("Unauthenticated", 401, errorCode.invalid));
-      // }
 
       const { continentId, countryCode, email, token } = req.body;
 
@@ -478,52 +515,10 @@ export const countryContinent = [
 
       await updateUserCountry(user!.id, country.id);
 
-      const accessTokenPayload = {
-        id: user!.id,
-      };
-
-      const refreshTokenPayload = {
-        id: user!.id,
-        email: user!.email,
-      };
-
-      const accessToken = jwt.sign(
-        accessTokenPayload,
-        process.env.ACCESS_TOKEN_SECRET!,
-        { expiresIn: 60 * 15 },
-      ); // 15min
-
-      const refreshToken = jwt.sign(
-        refreshTokenPayload,
-        process.env.REFRESH_TOKEN_SECRET!,
-        { expiresIn: 60 * 60 * 30 * 24 },
-      ); //1 month
-
-      const userUpdateData = {
-        refreshToken,
-        lastLogin: new Date(),
-      };
-
-      await updateUser(user!.id, userUpdateData);
-
-      res
-        .cookie("accessToken", accessToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-          maxAge: 15 * 60 * 1000,
-        })
-        .cookie("refreshToken", refreshToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-          maxAge: 30 * 24 * 60 * 60 * 1000, //30days
-        })
-        .status(200)
-        .json({
-          message: "Country Update Successfully!",
-          userid: user!.id,
-        });
+      res.status(200).json({
+        message: "Country Update Successfully!",
+        userid: user!.id,
+      });
     } catch (error) {
       return next(error);
     }
@@ -706,7 +701,7 @@ export const verifyOtpPassword = [
       );
     }
 
-    const isExpired = moment().diff(otprow?.updatedAt, "minutes") > 1;
+    const isExpired = moment().diff(otprow?.updatedAt, "minutes") > 3;
     if (isExpired) {
       return next(
         createError(
@@ -788,7 +783,7 @@ export const resetPassword = [
       );
     }
 
-    const isExpired = moment().diff(otpRow?.updatedAt, "minutes") > 1;
+    const isExpired = moment().diff(otpRow?.updatedAt, "minutes") > 3;
     if (isExpired) {
       return next(
         createError(
