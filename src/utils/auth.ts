@@ -5,7 +5,7 @@ import { createError } from "./error";
 export const checkUserIfExist = (user : User | null) => {
   if (user) {
     throw createError(
-      "User already exists",
+      "User already exist.",
       409,
       errorCode.userExist
     );
