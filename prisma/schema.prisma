@@ -83,6 +83,7 @@ model Recipe {
   recipeIngredients RecipeIngredient[]
   recipeSteps       RecipeStep[]
   recipeCategories  RecipeCategory[]
+
   @@index([countryId])
   @@index([title])
 }
@@ -141,7 +142,8 @@ model RecipeIngredient {
   id           Int        @id @default(autoincrement())
   recipeId     Int
   ingredientId Int
-  quantity     String?    @db.VarChar(100)
+  quantity     Decimal?   @db.Decimal(10, 3)
+  quantityText String?    @db.VarChar(100)
   unit         String?    @db.VarChar(50)
   preparation  String?    @db.VarChar(100)
   position     Int?       @db.SmallInt
@@ -149,6 +151,7 @@ model RecipeIngredient {
   updatedAt    DateTime   @updatedAt
   recipe       Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
   @@unique([recipeId, ingredientId])
   @@unique([recipeId, position])
   @@index([ingredientId])
@@ -164,14 +167,14 @@ model Ingredient {
 }
 
 model RecipeStep {
-  id          Int     @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   recipeId    Int
-  stepNumber  Int     @db.SmallInt
-  instruction String  @db.Text
-  image       String? @db.Text
+  stepNumber  Int      @db.SmallInt
+  instruction String   @db.Text
+  image       String?  @db.Text
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  recipe      Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  recipe      Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
 
   @@unique([recipeId, stepNumber])
 }
@@ -199,15 +202,15 @@ model RecipeCategory {
 }
 
 model Otp {
-  id            Int        @id @default(autoincrement())
+  id            Int       @id @default(autoincrement())
   purpose       Purpose
-  email         String     @unique @db.VarChar(254)
-  otpCode       String     @db.VarChar(255)
-  rememberToken String?    @db.VarChar(255)
-  verifyToken   String?    @db.VarChar(255)
+  email         String    @unique @db.VarChar(254)
+  otpCode       String    @db.VarChar(255)
+  rememberToken String?   @db.VarChar(255)
+  verifyToken   String?   @db.VarChar(255)
   verifyAt      DateTime?
-  attemptCount  Int        @default(0) @db.SmallInt
-  requestError  Int        @default(0) @db.SmallInt
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  attemptCount  Int       @default(0) @db.SmallInt
+  requestError  Int       @default(0) @db.SmallInt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
