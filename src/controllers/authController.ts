@@ -862,7 +862,7 @@ export const authCheck = async (
   res.status(200).json({
     message: "You are authenticated.",
     userId: user?.id,
-    username: user?.firstName + " " + user?.lastLogin,
+    username: user?.firstName,
     image: user?.image,
   });
 };
