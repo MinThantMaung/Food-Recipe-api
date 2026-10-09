@@ -65,6 +65,7 @@ model User {
   country             Country?             @relation(fields: [countryId], references: [id])
   socialMediaAccounts SocialMediaAccount[]
   reviews             Review[]
+  savedRecipes        SavedRecipe[]
 }
 
 model Recipe {
@@ -74,8 +75,9 @@ model Recipe {
   image             String?            @db.Text
   prepTime          Int?               @db.SmallInt
   cookingTime       Int?               @db.SmallInt
-  servings          Int?               @db.SmallInt
+  servings          Int                @default(1) @db.SmallInt
   countryId         Int
+  slug              String             @unique @db.VarChar(255)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   reviews           Review[]
@@ -83,6 +85,7 @@ model Recipe {
   recipeIngredients RecipeIngredient[]
   recipeSteps       RecipeStep[]
   recipeCategories  RecipeCategory[]
+  savedRecipes      SavedRecipe[]
 
   @@index([countryId])
   @@index([title])
@@ -90,7 +93,8 @@ model Recipe {
 
 model Country {
   id          Int       @id @default(autoincrement())
-  name        String    @unique @db.VarChar(100)
+  name        String  @unique @db.VarChar(100)
+  cuisineName String? @db.VarChar(100)
   code        String    @unique @db.VarChar(2)
   continentId Int
   createdAt   DateTime  @default(now())
@@ -146,7 +150,7 @@ model RecipeIngredient {
   quantityText String?    @db.VarChar(100)
   unit         String?    @db.VarChar(50)
   preparation  String?    @db.VarChar(100)
-  position     Int?       @db.SmallInt
+  position     Int        @db.SmallInt
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   recipe       Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
@@ -170,6 +174,7 @@ model RecipeStep {
   id          Int      @id @default(autoincrement())
   recipeId    Int
   stepNumber  Int      @db.SmallInt
+  title       String?  @db.VarChar(150)
   instruction String   @db.Text
   image       String?  @db.Text
   createdAt   DateTime @default(now())
@@ -213,4 +218,17 @@ model Otp {
   requestError  Int       @default(0) @db.SmallInt
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+}
+
+model SavedRecipe {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  recipeId  Int
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, recipeId])
+  @@index([recipeId])
 }
