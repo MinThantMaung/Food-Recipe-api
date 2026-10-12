@@ -15,6 +15,19 @@ export const getRecipeForCard = async () => {
           cuisineName: true,
         },
       },
+
+      // Categories assigned to each recipe
+      recipeCategories: {
+        select: {
+          category: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+            },
+          },
+        },
+      },
     },
   });
 
@@ -117,4 +130,49 @@ export const getRecipeById = async (id: number) => {
     rating,
     reviewCount,
   };
+};
+
+export const getCuisinesList = async () => {
+  return prismaClient.country.findMany({
+    where: {
+      cuisineName: { not: null },
+    },
+    select: {
+      id: true,
+      cuisineName: true,
+    },
+    orderBy: {
+      cuisineName: "asc",
+    },
+  });
+};
+
+export const getMealsList = async () => {
+  return prismaClient.category.findMany({
+    where: {
+      type: "MEAL",
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+};
+
+export const getDietList = async () => {
+  return prismaClient.category.findMany({
+    where: {
+      type: "DIET",
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
 };
