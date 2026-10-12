@@ -24,11 +24,20 @@ type RecipeSeed = {
 };
 
 const categoryData = [
+  // Meal
+  { name: "Breakfast", type: "MEAL" },
   { name: "Lunch", type: "MEAL" },
   { name: "Dinner", type: "MEAL" },
-  { name: "Stir-Fry", type: "COOKING_METHOD" },
-  { name: "Pan-Fried", type: "COOKING_METHOD" },
-  { name: "Simmered", type: "COOKING_METHOD" },
+  { name: "Snacks", type: "MEAL" },
+  { name: "Dessert", type: "MEAL" },
+
+  // Diet
+  { name: "Vegetarian", type: "DIET" },
+  { name: "Vegan", type: "DIET" },
+  { name: "Gluten Free", type: "DIET" },
+  { name: "Dairy Free", type: "DIET" },
+  { name: "Low Carb", type: "DIET" },
+  { name: "High Protein", type: "DIET" },
 ] as const;
 
 const recipes: RecipeSeed[] = [
@@ -151,7 +160,7 @@ const recipes: RecipeSeed[] = [
           "Stir in the basil until just wilted. Serve immediately with cooked rice.",
       },
     ],
-    categories: ["Lunch", "Dinner", "Stir-Fry"],
+    categories: ["Lunch", "Dinner", "Dairy Free"],
   },
   {
     title: "Chicken Teriyaki",
@@ -205,7 +214,7 @@ const recipes: RecipeSeed[] = [
           "Slice the chicken and serve with rice. Spoon over the sauce and garnish with sesame seeds and spring onion.",
       },
     ],
-    categories: ["Lunch", "Dinner", "Pan-Fried"],
+    categories: ["Lunch", "Dinner", "Dairy Free"],
   },
   {
     title: "Burmese Chicken Curry",
@@ -281,7 +290,7 @@ const recipes: RecipeSeed[] = [
           "Remove the lid and reduce the sauce until some oil separates around the edges. Adjust the seasoning and serve with rice.",
       },
     ],
-    categories: ["Dinner", "Simmered"],
+    categories: ["Dinner", "Dairy Free"],
   },
 ];
 
@@ -299,32 +308,86 @@ async function main() {
     create: { name: "Europe" },
   });
 
+  const northAmerica = await prismaClient.continent.upsert({
+    where: { name: "North America" },
+    update: {},
+    create: { name: "North America" },
+  });
+
+  const southAmerica = await prismaClient.continent.upsert({
+    where: { name: "South America" },
+    update: {},
+    create: { name: "South America" },
+  });
+
+  const africa = await prismaClient.continent.upsert({
+    where: { name: "Africa" },
+    update: {},
+    create: { name: "Africa" },
+  });
+
+  const oceania = await prismaClient.continent.upsert({
+    where: { name: "Oceania" },
+    update: {},
+    create: { name: "Oceania" },
+  });
+
   // 2. Countries
   const countryData = [
-    {
-      name: "Italy",
-      code: "IT",
-      cuisineName: "Italian",
-      continentId: europe.id,
-    },
-    {
-      name: "Thailand",
-      code: "TH",
-      cuisineName: "Thai",
-      continentId: asia.id,
-    },
-    {
-      name: "Japan",
-      code: "JP",
-      cuisineName: "Japanese",
-      continentId: asia.id,
-    },
-    {
-      name: "Myanmar",
-      code: "MM",
-      cuisineName: "Burmese",
-      continentId: asia.id,
-    },
+    // Asia
+    { name: "Thailand", code: "TH", cuisineName: "Thai", continentId: asia.id },
+    { name: "Japan", code: "JP", cuisineName: "Japanese", continentId: asia.id },
+    { name: "Myanmar", code: "MM", cuisineName: "Burmese", continentId: asia.id },
+    { name: "India", code: "IN", cuisineName: "Indian", continentId: asia.id },
+    { name: "China", code: "CN", cuisineName: "Chinese", continentId: asia.id },
+    { name: "South Korea", code: "KR", cuisineName: "Korean", continentId: asia.id },
+    { name: "Vietnam", code: "VN", cuisineName: "Vietnamese", continentId: asia.id },
+    { name: "Indonesia", code: "ID", cuisineName: "Indonesian", continentId: asia.id },
+    { name: "Malaysia", code: "MY", cuisineName: "Malaysian", continentId: asia.id },
+    { name: "Singapore", code: "SG", cuisineName: "Singaporean", continentId: asia.id },
+    { name: "Philippines", code: "PH", cuisineName: "Filipino", continentId: asia.id },
+    { name: "Pakistan", code: "PK", cuisineName: "Pakistani", continentId: asia.id },
+    { name: "Bangladesh", code: "BD", cuisineName: "Bangladeshi", continentId: asia.id },
+    { name: "Sri Lanka", code: "LK", cuisineName: "Sri Lankan", continentId: asia.id },
+    { name: "Nepal", code: "NP", cuisineName: "Nepalese", continentId: asia.id },
+    { name: "Lebanon", code: "LB", cuisineName: "Lebanese", continentId: asia.id },
+    { name: "Iran", code: "IR", cuisineName: "Iranian", continentId: asia.id },
+
+    // Europe
+    { name: "Italy", code: "IT", cuisineName: "Italian", continentId: europe.id },
+    { name: "France", code: "FR", cuisineName: "French", continentId: europe.id },
+    { name: "Spain", code: "ES", cuisineName: "Spanish", continentId: europe.id },
+    { name: "Greece", code: "GR", cuisineName: "Greek", continentId: europe.id },
+    { name: "Portugal", code: "PT", cuisineName: "Portuguese", continentId: europe.id },
+    { name: "Germany", code: "DE", cuisineName: "German", continentId: europe.id },
+    { name: "United Kingdom", code: "GB", cuisineName: "British", continentId: europe.id },
+    { name: "Ireland", code: "IE", cuisineName: "Irish", continentId: europe.id },
+    { name: "Poland", code: "PL", cuisineName: "Polish", continentId: europe.id },
+    { name: "Sweden", code: "SE", cuisineName: "Swedish", continentId: europe.id },
+
+    // North America
+    { name: "United States", code: "US", cuisineName: "American", continentId: northAmerica.id },
+    { name: "Mexico", code: "MX", cuisineName: "Mexican", continentId: northAmerica.id },
+    { name: "Canada", code: "CA", cuisineName: "Canadian", continentId: northAmerica.id },
+    { name: "Jamaica", code: "JM", cuisineName: "Jamaican", continentId: northAmerica.id },
+    { name: "Cuba", code: "CU", cuisineName: "Cuban", continentId: northAmerica.id },
+
+    // South America
+    { name: "Brazil", code: "BR", cuisineName: "Brazilian", continentId: southAmerica.id },
+    { name: "Argentina", code: "AR", cuisineName: "Argentinian", continentId: southAmerica.id },
+    { name: "Peru", code: "PE", cuisineName: "Peruvian", continentId: southAmerica.id },
+    { name: "Colombia", code: "CO", cuisineName: "Colombian", continentId: southAmerica.id },
+
+    // Africa
+    { name: "Morocco", code: "MA", cuisineName: "Moroccan", continentId: africa.id },
+    { name: "Egypt", code: "EG", cuisineName: "Egyptian", continentId: africa.id },
+    { name: "Ethiopia", code: "ET", cuisineName: "Ethiopian", continentId: africa.id },
+    { name: "Nigeria", code: "NG", cuisineName: "Nigerian", continentId: africa.id },
+    { name: "South Africa", code: "ZA", cuisineName: "South African", continentId: africa.id },
+
+    // Oceania
+    { name: "Australia", code: "AU", cuisineName: "Australian", continentId: oceania.id },
+    { name: "New Zealand", code: "NZ", cuisineName: "New Zealand", continentId: oceania.id },
   ];
 
   const countries = new Map<string, number>();
@@ -365,8 +428,8 @@ async function main() {
   // Seed these before the recipe transactions to keep transactions short.
   const ingredientNames = new Set(
     recipes.flatMap((recipe) =>
-      recipe.ingredients.map((ingredient) => ingredient.name),
-    ),
+      recipe.ingredients.map((ingredient) => ingredient.name)
+    )
   );
 
   const ingredients = new Map<string, number>();
@@ -480,7 +543,7 @@ async function main() {
   }
 
   console.log(
-    "Seed complete: continents, countries, recipes, ingredients, steps, and categories.",
+    "Seed complete: continents, countries, recipes, ingredients, steps, and categories."
   );
 }
 
