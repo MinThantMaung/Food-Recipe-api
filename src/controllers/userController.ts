@@ -96,22 +96,22 @@ export const getDiets = async (
   }
 };
 
-// export const getRecipesByMeal = async (
-//   req: Request,
-//   res: Response,
-//   next: NextFunction,
-// ) => {
-//   try {
-//     const meals = await getMealsList();
+export const getRecipesByMeal = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const meals = await getMealsList();
 
-//     return res.status(200).json({
-//       message: "Meals retrieved successfully",
-//       data: meals,
-//     });
-//   } catch (error) {
-//     return next(error);
-//   }
-// };
+    return res.status(200).json({
+      message: "Meals retrieved successfully",
+      data: meals,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
 
 export const getRecipeFilters = async (
   req: Request,
