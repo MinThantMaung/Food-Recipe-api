@@ -13,7 +13,10 @@ export const app = express();
 
 console.log("FRONTEND_URL:", process.env.FRONTEND_URL);
 
-var whitelist = [process.env.FRONTEND_URL]
+const whitelist = [
+  process.env.FRONTEND_URL,
+  "http://localhost:4173",
+];
 var corsOptions = {
   origin: function (origin:any, callback:(err: Error | null, origin?: any) => void) {
     if (!origin) return callback(null, true);
