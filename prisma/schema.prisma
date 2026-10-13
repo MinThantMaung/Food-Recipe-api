@@ -93,9 +93,11 @@ model Recipe {
 
 model Country {
   id          Int       @id @default(autoincrement())
-  name        String  @unique @db.VarChar(100)
-  cuisineName String? @db.VarChar(100)
+  name        String    @unique @db.VarChar(100)
+  cuisineName String?   @db.VarChar(100)
+  description String?   @db.Text
   code        String    @unique @db.VarChar(2)
+  image       String?   @db.Text
   continentId Int
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -188,6 +190,7 @@ model Category {
   id               Int              @id @default(autoincrement())
   name             String           @unique @db.VarChar(100)
   type             CategoryType
+  image            String?           @db.Text
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   recipeCategories RecipeCategory[]
