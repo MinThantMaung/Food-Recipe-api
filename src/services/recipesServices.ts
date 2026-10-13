@@ -140,6 +140,14 @@ export const getCuisinesList = async () => {
     select: {
       id: true,
       cuisineName: true,
+      description: true,
+      image: true,
+      continent: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
     },
     orderBy: {
       cuisineName: "asc",
@@ -155,6 +163,7 @@ export const getMealsList = async () => {
     select: {
       id: true,
       name: true,
+      image: true,
     },
     orderBy: {
       name: "asc",
