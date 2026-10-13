@@ -95,3 +95,45 @@ export const getDiets = async (
     return next(error);
   }
 };
+
+// export const getRecipesByMeal = async (
+//   req: Request,
+//   res: Response,
+//   next: NextFunction,
+// ) => {
+//   try {
+//     const meals = await getMealsList();
+
+//     return res.status(200).json({
+//       message: "Meals retrieved successfully",
+//       data: meals,
+//     });
+//   } catch (error) {
+//     return next(error);
+//   }
+// };
+
+export const getRecipeFilters = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const [cuisines, meals, diets] = await Promise.all([
+      getCuisinesList(),
+      getMealsList(),
+      getDietList(),
+    ]);
+
+    return res.status(200).json({
+      message: "Recipe filters retrieved successfully",
+      data: {
+        cuisines,
+        meals,
+        diets,
+      },
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
