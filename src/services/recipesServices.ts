@@ -106,6 +106,7 @@ export const getRecipeById = async (id: number) => {
               firstName: true,
               lastName: true,
               image: true,
+              email: true,
             },
           },
         },
