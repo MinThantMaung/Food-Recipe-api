@@ -10,6 +10,14 @@ export const getUserByEmail = async (email: string) => {
 export const getUserById = async (id: number) => {
   return await prismaClient.user.findUnique({
     where: { id },
+    include: {
+      country: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
   });
 };
 
@@ -35,5 +43,11 @@ export const updateOtp = async (id: number, otpData: Prisma.OtpUpdateInput) => {
   return await prismaClient.otp.update({
     where: { id },
     data: otpData,
+  });
+};
+
+export const getRecipeById = async (id: number) => {
+  return await prismaClient.recipe.findUnique({
+    where: { id },
   });
 };
