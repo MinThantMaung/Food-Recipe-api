@@ -17,9 +17,6 @@ router.post('/resend-otp', resendOtp);
 router.post('/update-country', countryContinent);
 router.post('/google',loginLimiter,googleLogin)
 
-//google login route
-//router.post("/auth/google", googleLogin);
-
 router.get("/auth-check", auth, authCheck);
 
 export default router;
