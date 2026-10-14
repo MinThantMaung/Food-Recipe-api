@@ -1,7 +1,18 @@
 import { prismaClient } from "../lib/prisma";
 
+type ReviewInput = {
+  userId: number;
+  recipeId: number;
+  rating: number;
+  comment: string;
+};
+
 export const getAllContinents = async () => {
   return prismaClient.continent.findMany({
+    select:{
+      id: true,
+      name: true,
+    },
     orderBy: { id: "asc" },
   });
 };
@@ -9,6 +20,11 @@ export const getAllContinents = async () => {
 export const getCountriesByContinent = async (continentId: number) => {
   return prismaClient.country.findMany({
     where: { continentId },
+    select: {
+      id: true,
+      name: true,
+      code: true
+    },
     orderBy: { id: "asc" },
   });
 };
@@ -20,10 +36,7 @@ export const updateUser = async (id: number, userData: any) => {
   });
 };
 
-export const getCountry = async (
-  countryCode: string,
-  continentId: number
-) => {
+export const getCountry = async (countryCode: string, continentId: number) => {
   return prismaClient.country.findFirst({
     where: {
       code: countryCode,
@@ -39,6 +52,29 @@ export const updateUserCountry = async (userId: number, countryId: number) => {
       country: {
         connect: { id: countryId },
       },
+    },
+  });
+};
+
+export const giveReview = async (reviewData: ReviewInput) => {
+  const { userId, recipeId, rating, comment } = reviewData;
+
+  return prismaClient.review.upsert({
+    where: {
+      userId_recipeId: {
+        userId,
+        recipeId,
+      },
+    },
+    create: {
+      userId,
+      recipeId,
+      rating,
+      comment,
+    },
+    update: {
+      rating,
+      comment,
     },
   });
 };
