@@ -1,5 +1,12 @@
 import { prismaClient } from "../lib/prisma";
 
+type UpdateReviewData = {
+  userId: number;
+  recipeId: number;
+  rating: number;
+  comment: string;
+};
+
 export const getRecipeForCard = async () => {
   const recipes = await prismaClient.recipe.findMany({
     select: {
@@ -79,7 +86,7 @@ export const getRecipeById = async (id: number) => {
         },
       },
       recipeSteps: {
-        orderBy: { stepNumber: "asc" }
+        orderBy: { stepNumber: "asc" },
       },
       recipeCategories: {
         include: {
@@ -185,4 +192,53 @@ export const getDietList = async () => {
       name: "asc",
     },
   });
+};
+
+export const deleteReview = async (userId: number, recipeId: number) => {
+  return prismaClient.review.delete({
+    where: {
+      userId_recipeId: {
+        userId,
+        recipeId,
+      },
+    },
+  });
+};
+
+export const updateReview = async ({
+  userId,
+  recipeId,
+  rating,
+  comment,
+}: UpdateReviewData) => {
+  return prismaClient.review.update({
+    where: {
+      userId_recipeId: {
+        userId,
+        recipeId,
+      },
+    },
+    data: {
+      rating,
+      comment: comment.trim(),
+    },
+  });
+};
+
+export const saveRecipe = async (userId: number, recipeId: number) => {
+  return prismaClient.savedRecipe.create({
+    data: {
+      userId,
+      recipeId,
+    },
+  });
+};
+
+export const getSavedRecipeIds = async (userId: number) => {
+  const savedRecipes = await prismaClient.savedRecipe.findMany({
+    where: { userId },
+    select: { recipeId: true },
+  });
+
+  return savedRecipes.map((saved) => saved.recipeId);
 };
