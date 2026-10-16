@@ -242,3 +242,53 @@ export const getSavedRecipeIds = async (userId: number) => {
 
   return savedRecipes.map((saved) => saved.recipeId);
 };
+
+export const deleteRecipe = async (userId: number, recipeId: number) => {
+  return prismaClient.savedRecipe.deleteMany({
+    where: { userId, recipeId },
+  });
+};
+
+export const getSavedRecipes = async (userId: number) => {
+  const savedRecipes = await prismaClient.savedRecipe.findMany({
+    where: { userId },
+    include: {
+      recipe: {
+        include: {
+          country: {
+            select: {
+              cuisineName: true,
+            },
+          },
+          reviews: {
+            select: {
+              rating: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return savedRecipes.map((saved) => {
+    const { reviews, ...recipe } = saved.recipe;
+
+    const reviewCount = reviews.length;
+
+    const totalRating = reviews.reduce(
+      (total, review) => total + review.rating,
+      0,
+    );
+
+    const rating = reviewCount > 0 ? totalRating / reviewCount : 0;
+
+    return {
+      ...saved,
+      recipe: {
+        ...recipe,
+        rating,
+        reviewCount,
+      },
+    };
+  });
+};
