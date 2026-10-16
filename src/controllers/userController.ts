@@ -1,9 +1,11 @@
 import { Request, Response, NextFunction } from "express";
 import { body, param, validationResult } from "express-validator";
 import {
+  createOrUpdateUser,
   getAllContinents,
   getCountriesByContinent,
   giveReview,
+  updateUser,
 } from "../services/userServices";
 import {
   getCuisinesList,
@@ -13,6 +15,7 @@ import {
 import { createError } from "../utils/error";
 import { errorCode } from "../../config/error";
 import { getRecipeById, getUserById } from "../services/authServices";
+import { checkUserIfNotExist } from "../utils/auth";
 
 interface CustomRequest extends Request {
   userId?: number;
@@ -255,6 +258,7 @@ export const getUserDetailById = [
           lastName: user.lastName,
           email: user.email,
           image: user.image,
+          phone: user.phone,
           countryId: user.countryId,
           verifiedAt: user.verifiedAt,
           createdAt: user.createdAt,
@@ -266,6 +270,61 @@ export const getUserDetailById = [
       });
     } catch (error) {
       return next(error);
+    }
+  },
+];
+
+export const updatePhone = [
+  body("phone")
+    .isString()
+    .withMessage("Phone number must be a string")
+    .bail()
+    .trim()
+    .notEmpty()
+    .withMessage("Phone number is required")
+    .bail()
+    .customSanitizer((value: string) => value.replace(/[\s-]/g, ""))
+    .matches(/^\+[1-9]\d{7,14}$/)
+    .withMessage("Enter a phone number with country code, e.g. +819012345678"),
+
+  async (req: CustomRequest, res: Response, next: NextFunction) => {
+    try {
+      const errors = validationResult(req).array({ onlyFirstError: true });
+      if (errors.length > 0) {
+        return next(createError(errors[0].msg, 400, errorCode.invalid));
+      }
+
+      const userId = req.userId;
+
+      if (!userId) {
+        return res.status(401).json({
+          message: "Please sign in to update your phone number.",
+        });
+      }
+
+      const { phone } = req.body;
+
+      const user = await getUserById(userId);
+      checkUserIfNotExist(user);
+
+      const updatedUser = await createOrUpdateUser(userId, phone);
+
+      return res.status(200).json({
+        message: "Phone number updated successfully",
+        phone: updatedUser.phone,
+      });
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "P2002"
+      ) {
+        return res.status(409).json({
+          message: "This phone number is already in use.",
+        });
+      }
+
+      next(error);
     }
   },
 ];
