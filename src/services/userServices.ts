@@ -78,3 +78,14 @@ export const giveReview = async (reviewData: ReviewInput) => {
     },
   });
 };
+
+export const createOrUpdateUser = async (id: number, phone: string) => {
+  return prismaClient.user.update({
+    where: { id },
+    data: { phone },
+    select: {
+      id: true,
+      phone: true,
+    },
+  });
+};
