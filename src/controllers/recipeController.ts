@@ -1,9 +1,11 @@
 import { Request, Response, NextFunction } from "express";
 import {
+  deleteRecipe,
   deleteReview,
   getRecipeById,
   getRecipeForCard,
   getSavedRecipeIds,
+  getSavedRecipes,
   saveRecipe,
   updateReview,
 } from "../services/recipesServices";
@@ -208,6 +210,63 @@ export const getSaveRecipeData = async (
     return res.status(201).json({
       message: "Saved Recipes retrieved successfully",
       savedRecipeIds
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const unSaveRecipe = async (
+  req: CustomRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.userId;
+    const recipeId = Number(req.params.recipeId);
+
+    if (!userId) {
+      return res.status(401).json({
+        message: "Please sign in to get saved recipe",
+      });
+    }
+
+    if (!Number.isSafeInteger(recipeId) || recipeId <= 0) {
+      return res.status(400).json({
+        message: "Invalid recipe ID",
+      });
+    }
+
+    const unSaveRecipe = await deleteRecipe(userId,recipeId);
+
+    return res.status(200).json({
+      message: "Recipe unsaved successfully",
+      unSaveRecipe,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSavedRecipesData = async (
+  req: CustomRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const userId = req.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        message: "Please sign in to get saved recipe",
+      });
+    }
+
+    const savedRecipes = await getSavedRecipes(userId);
+
+    return res.status(201).json({
+      message: "Saved Recipes retrieved successfully",
+      savedRecipes
     });
   } catch (error) {
     next(error);
