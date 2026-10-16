@@ -14,8 +14,10 @@ import {
   deleteReviewRecipeDetail,
   getRecipeDetail,
   getRecipesCard,
+  getSavedRecipesData,
   getSaveRecipeData,
   saveRecipeData,
+  unSaveRecipe,
   updateReviewRecipeDetail,
 } from "../../controllers/recipeController";
 import { auth } from "../../middlewares/auth";
@@ -37,5 +39,7 @@ router.delete("/recipe/:recipeId/review", auth, deleteReviewRecipeDetail);
 router.patch("/recipe/:recipeId/review", auth, updateReviewRecipeDetail);
 router.post("/recipe/:recipeId/save",auth,saveRecipeData)
 router.get("/get/save",auth,getSaveRecipeData)
+router.delete("/recipe/:recipeId/unsave",auth,unSaveRecipe)
+router.get("/recipes/save",auth,getSavedRecipesData)
 
 export default router;
