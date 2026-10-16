@@ -2,6 +2,7 @@ import express from 'express';
 import { authCheck, confirmPassword, countryContinent, forgetPassword, googleLogin, login, logout, register, resendOtp, resetPassword, verifyOtp, verifyOtpPassword } from '../../controllers/authController';
 import { auth } from '../../middlewares/auth';
 import { loginLimiter } from '../../middlewares/rateLimiter';
+import { updatePhone } from '../../controllers/userController';
 
 const router = express.Router();
 
@@ -16,6 +17,7 @@ router.post('/reset-password',resetPassword)
 router.post('/resend-otp', resendOtp);
 router.post('/update-country', countryContinent);
 router.post('/google',loginLimiter,googleLogin)
+router.patch('/phone',auth,updatePhone)
 
 router.get("/auth-check", auth, authCheck);
 
