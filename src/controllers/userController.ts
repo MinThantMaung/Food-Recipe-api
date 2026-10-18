@@ -4,8 +4,10 @@ import {
   createOrUpdateUser,
   getAllContinents,
   getCountriesByContinent,
+  getCountryById,
   giveReview,
   updateUser,
+  updateUserProfile,
 } from "../services/userServices";
 import {
   getCuisinesList,
@@ -24,7 +26,7 @@ interface CustomRequest extends Request {
 export const getContinents = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const continents = await getAllContinents();
@@ -41,7 +43,7 @@ export const getContinents = async (
 export const getCountries = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const rawId = req.params.continentId;
@@ -67,7 +69,7 @@ export const getCountries = async (
 export const getCuisine = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const cuisines = await getCuisinesList();
@@ -84,7 +86,7 @@ export const getCuisine = async (
 export const getMeals = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const meals = await getMealsList();
@@ -101,7 +103,7 @@ export const getMeals = async (
 export const getDiets = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const diets = await getDietList();
@@ -118,7 +120,7 @@ export const getDiets = async (
 export const getRecipesByMeal = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const meals = await getMealsList();
@@ -135,7 +137,7 @@ export const getRecipesByMeal = async (
 export const getRecipeFilters = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const [cuisines, meals, diets] = await Promise.all([
@@ -191,8 +193,8 @@ export const postReview = [
           createError(
             "You must sign in to write a review.",
             401,
-            errorCode.unauthenticated,
-          ),
+            errorCode.unauthenticated
+          )
         );
       }
 
@@ -208,8 +210,8 @@ export const postReview = [
           createError(
             "You must sign in to write a review.",
             401,
-            errorCode.unauthenticated,
-          ),
+            errorCode.unauthenticated
+          )
         );
       }
 
@@ -241,8 +243,8 @@ export const getUserDetailById = [
           createError(
             "You must sign in to view your profile.",
             401,
-            errorCode.unauthenticated,
-          ),
+            errorCode.unauthenticated
+          )
         );
       }
       const user = await getUserById(userId);
@@ -254,6 +256,7 @@ export const getUserDetailById = [
         message: "Profile fetched successfully",
         user: {
           id: user.id,
+          password: user.password,
           firstName: user.firstName,
           lastName: user.lastName,
           email: user.email,
@@ -286,7 +289,6 @@ export const updatePhone = [
     .customSanitizer((value: string) => value.replace(/[\s-]/g, ""))
     .matches(/^\+[1-9]\d{7,14}$/)
     .withMessage("Enter a phone number with country code, e.g. +819012345678"),
-
   async (req: CustomRequest, res: Response, next: NextFunction) => {
     try {
       const errors = validationResult(req).array({ onlyFirstError: true });
@@ -314,16 +316,89 @@ export const updatePhone = [
         phone: updatedUser.phone,
       });
     } catch (error) {
-      if (
-        error instanceof Error &&
-        "code" in error &&
-        error.code === "P2002"
-      ) {
+      if (error instanceof Error && "code" in error && error.code === "P2002") {
         return res.status(409).json({
           message: "This phone number is already in use.",
         });
       }
 
+      next(error);
+    }
+  },
+];
+
+export const updateProfile = [
+  body("firstName")
+    .isString()
+    .withMessage("First name must be a string")
+    .bail()
+    .trim()
+    .notEmpty()
+    .withMessage("First name is required"),
+  body("lastName")
+    .isString()
+    .withMessage("Last name must be a string")
+    .bail()
+    .trim()
+    .notEmpty()
+    .withMessage("Last name is required"),
+  body("countryCode")
+    .optional() // Keep the current country when omitted.
+    .isString()
+    .withMessage("Country code must be a string")
+    .bail()
+    .trim()
+    .notEmpty()
+    .withMessage("Country code cannot be empty")
+    .bail()
+    .toUpperCase(),
+  async (req: CustomRequest, res: Response, next: NextFunction) => {
+    try {
+      const errors = validationResult(req).array({
+        onlyFirstError: true,
+      });
+
+      if (errors.length > 0) {
+        return next(
+          createError(errors[0].msg, 400, errorCode.invalid)
+        );
+      }
+      const userId = Number(req.userId);
+
+      if (!Number.isInteger(userId) || userId <= 0) {
+        return next(
+          createError("Please sign in to continue", 401, errorCode.invalid)
+        );
+      }
+
+      const existingUser = await getUserById(userId);
+      checkUserIfNotExist(existingUser);
+
+      const { firstName, lastName, countryCode } = req.body;
+
+      const country = await getCountryById(countryCode);
+
+      if (!country) {
+          return next(
+            createError("Country not found", 400, errorCode.invalid)
+          );
+      }
+      const countryId = country.id;
+
+      const image: string | undefined = res.locals.uploadedImagePath;
+
+      const user = await updateUserProfile(userId, {
+        firstName,
+        lastName,
+        ...(countryId !== undefined && { countryId }),
+        ...(image !== undefined && { image }),
+      });
+
+      return res.status(200).json({
+        message: "Profile updated successfully",
+        user,
+      });
+    } catch (error) {
       next(error);
     }
   },
