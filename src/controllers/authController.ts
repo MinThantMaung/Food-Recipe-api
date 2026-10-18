@@ -25,6 +25,7 @@ import { Prisma, User } from "../../generated/prisma/client";
 import { UserCreateInput } from "../../generated/prisma/models";
 import { sendOtpEmail } from "../services/mailService";
 import {
+  deleteuser,
   getCountry,
   updateUser,
   updateUserCountry,
@@ -92,8 +93,8 @@ export const register = [
             createError(
               "You have reached the maximum number of OTP requests for today. Please try again tomorrow.",
               400,
-              errorCode.overLimit,
-            ),
+              errorCode.overLimit
+            )
           );
         } else {
           const otpData: Prisma.OtpUpdateInput = {
@@ -161,7 +162,7 @@ export const verifyOtp = [
       };
       await updateOtp(otprow!.id, otpData);
       return next(
-        createError("Invalid verification token.", 401, errorCode.attack),
+        createError("Invalid verification token.", 401, errorCode.attack)
       );
     }
 
@@ -171,8 +172,8 @@ export const verifyOtp = [
         createError(
           "OTP has expired. Please request a new one.",
           403,
-          errorCode.otpExpired,
-        ),
+          errorCode.otpExpired
+        )
       );
     }
     const isMatchOtp = await bcrypt.compare(otp, otprow?.otpCode || "");
@@ -250,7 +251,7 @@ export const confirmPassword = [
 
     if (otpRow?.verifyToken !== token) {
       return next(
-        createError("You are not authenticated user!", 400, errorCode.attack),
+        createError("You are not authenticated user!", 400, errorCode.attack)
       );
     }
 
@@ -260,8 +261,8 @@ export const confirmPassword = [
         createError(
           "Verification has expired. Please verify again.",
           403,
-          errorCode.otpExpired,
-        ),
+          errorCode.otpExpired
+        )
       );
     }
 
@@ -288,13 +289,13 @@ export const confirmPassword = [
     const accessToken = jwt.sign(
       accessTokenPayload,
       process.env.ACCESS_TOKEN_SECRET!,
-      { expiresIn: 60 * 15 },
+      { expiresIn: 60 * 15 }
     ); // 15min
 
     const refreshToken = jwt.sign(
       refreshTokenPayload,
       process.env.REFRESH_TOKEN_SECRET!,
-      { expiresIn: 60 * 60 * 30 * 24 },
+      { expiresIn: 60 * 60 * 30 * 24 }
     ); //1 month
 
     const userUpdateData = {
@@ -348,11 +349,7 @@ export const login = [
 
     if (!user?.password) {
       return next(
-        createError(
-          "Invalid email or password",
-          401,
-          errorCode.unauthenticated,
-        ),
+        createError("Invalid email or password", 401, errorCode.unauthenticated)
       );
     }
 
@@ -362,7 +359,7 @@ export const login = [
     if (user!.errorLoginCount >= 5) {
       if (!validTime) {
         return next(
-          createError("Please try again later", 429, errorCode.overLimit),
+          createError("Please try again later", 429, errorCode.overLimit)
         );
       }
     }
@@ -392,7 +389,7 @@ export const login = [
         }
       }
       return next(
-        createError("Password is not correct!", 401, errorCode.unauthenticated),
+        createError("Password is not correct!", 401, errorCode.unauthenticated)
       );
     }
 
@@ -401,8 +398,8 @@ export const login = [
         createError(
           "Your account has been frozen. Please contact support.",
           403,
-          errorCode.accountFreeze,
-        ),
+          errorCode.accountFreeze
+        )
       );
     }
 
@@ -418,12 +415,12 @@ export const login = [
     const accessToken = jwt.sign(
       accessTokenPayload,
       process.env.ACCESS_TOKEN_SECRET!,
-      { expiresIn: 60 * 15 },
+      { expiresIn: 60 * 15 }
     ); //15 minutes
     const refreshToken = jwt.sign(
       refreshTokenPayload,
       process.env.REFRESH_TOKEN_SECRET!,
-      { expiresIn: "30d" },
+      { expiresIn: "30d" }
     ); //30 days
 
     const userData = {
@@ -498,7 +495,7 @@ export const countryContinent = [
 
       if (otpRow?.verifyToken !== token) {
         return next(
-          createError("You are not authenticated user!", 400, errorCode.attack),
+          createError("You are not authenticated user!", 400, errorCode.attack)
         );
       }
 
@@ -512,8 +509,8 @@ export const countryContinent = [
           createError(
             "Selected country does not belong to the selected continent",
             400,
-            errorCode.invalid,
-          ),
+            errorCode.invalid
+          )
         );
       }
 
@@ -538,8 +535,8 @@ export const logout = [
         createError(
           "You are not authenticated user!",
           401,
-          errorCode.unauthenticated,
-        ),
+          errorCode.unauthenticated
+        )
       );
     }
 
@@ -555,22 +552,42 @@ export const logout = [
         createError(
           "You are not authenticated user!",
           401,
-          errorCode.unauthenticated,
-        ),
+          errorCode.unauthenticated
+        )
       );
     }
 
     const user = await getUserById(decoded.id);
-    checkUserIfNotExist(user);
+    if (!user) {
+      res.clearCookie("accessToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+      });
+      res.clearCookie("refreshToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+      });
+      return res.status(200).json({
+        message: "Successfully Logged Out!.",
+      });
+    }
 
     if (user!.email != decoded.email) {
-      return next(
-        createError(
-          "You are not authenticated user!",
-          401,
-          errorCode.unauthenticated,
-        ),
-      );
+      res.clearCookie("accessToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+      });
+      res.clearCookie("refreshToken", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+      });
+      return res.status(200).json({
+        message: "Successfully Logged Out!.",
+      });
     }
 
     const userData = {
@@ -642,8 +659,8 @@ export const forgetPassword = [
             createError(
               "You have reached the maximum number of OTP requests for today. Please try again tomorrow.",
               400,
-              errorCode.overLimit,
-            ),
+              errorCode.overLimit
+            )
           );
         } else {
           const otpData: Prisma.OtpUpdateInput = {
@@ -700,8 +717,8 @@ export const verifyOtpPassword = [
         createError(
           "Invalid or expired verification request",
           400,
-          errorCode.attack,
-        ),
+          errorCode.attack
+        )
       );
     }
 
@@ -711,8 +728,8 @@ export const verifyOtpPassword = [
         createError(
           "OTP has expired. Please request a new one.",
           403,
-          "otpExpired",
-        ),
+          "otpExpired"
+        )
       );
     }
     const isMatchOtp = await bcrypt.compare(otp, otprow?.otpCode || "");
@@ -783,7 +800,7 @@ export const resetPassword = [
 
     if (otpRow?.verifyToken != token) {
       return next(
-        createError("You are not authenticated user!", 400, errorCode.attack),
+        createError("You are not authenticated user!", 400, errorCode.attack)
       );
     }
 
@@ -793,8 +810,8 @@ export const resetPassword = [
         createError(
           "OTP has expired. Please request a new one.",
           403,
-          "otpExpired",
-        ),
+          "otpExpired"
+        )
       );
     }
 
@@ -813,13 +830,13 @@ export const resetPassword = [
     const accessToken = jwt.sign(
       accessTokenPayload,
       process.env.ACCESS_TOKEN_SECRET!,
-      { expiresIn: 60 * 15 },
+      { expiresIn: 60 * 15 }
     ); // 15min
 
     const refreshToken = jwt.sign(
       refreshTokenPayload,
       process.env.REFRESH_TOKEN_SECRET!,
-      { expiresIn: 60 * 60 * 30 * 24 },
+      { expiresIn: 60 * 60 * 30 * 24 }
     ); //1 month
 
     const userData = {
@@ -853,18 +870,42 @@ export const resetPassword = [
 export const authCheck = async (
   req: CustomRequest,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
-  const userId = req.userId;
-  const user = await getUserById(userId!);
-  checkUserIfNotExist(user);
+  try {
+    const userId = req.userId;
 
-  res.status(200).json({
-    message: "You are authenticated.",
-    userId: user?.id,
-    username: user?.firstName,
-    image: user?.image,
-  });
+    if (userId == null) {
+      return next(
+        createError(
+          "You are not authenticated.",
+          401,
+          errorCode.unauthenticated
+        )
+      );
+    }
+
+    const user = await getUserById(userId);
+
+    if (!user) {
+      return next(
+        createError(
+          "Your account no longer exists.",
+          401,
+          errorCode.unauthenticated
+        )
+      );
+    }
+
+    return res.status(200).json({
+      message: "You are authenticated.",
+      userId: user.id,
+      username: user.firstName,
+      image: user.image,
+    });
+  } catch (error) {
+    return next(error);
+  }
 };
 
 export const resendOtp = [
@@ -890,8 +931,8 @@ export const resendOtp = [
           createError(
             "OTP not found for the provided email.",
             404,
-            errorCode.notfound,
-          ),
+            errorCode.notfound
+          )
         );
       }
       if (token !== otprow?.rememberToken) {
@@ -903,8 +944,8 @@ export const resendOtp = [
           createError(
             "You are not authenticated user!",
             401,
-            errorCode.unauthenticated,
-          ),
+            errorCode.unauthenticated
+          )
         );
       }
       const lastOtpRequest = new Date(otprow.updatedAt).toLocaleDateString();
@@ -926,8 +967,8 @@ export const resendOtp = [
             createError(
               "You have reached the maximum number of OTP requests for today. Please try again later.",
               400,
-              errorCode.overLimit,
-            ),
+              errorCode.overLimit
+            )
           );
         } else {
           const otpData: Prisma.OtpUpdateInput = {
@@ -956,7 +997,7 @@ export const resendOtp = [
 export const googleLogin = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   const credential = req.body?.credential;
 
@@ -996,7 +1037,7 @@ export const googleLogin = async (
         });
         return;
       }
-      
+
       user = await createGoogleUserWithAccount(googleUser);
     }
 
@@ -1014,7 +1055,7 @@ export const googleLogin = async (
       throw new Error("JWT secrets are required");
     }
 
-     const accessTokenPayload = {
+    const accessTokenPayload = {
       id: user.id,
     };
 
@@ -1023,17 +1064,13 @@ export const googleLogin = async (
       email: user.email,
     };
 
-    const accessToken = jwt.sign(
-      accessTokenPayload,
-      accessTokenSecret,
-      { expiresIn: "15m" },
-    );
+    const accessToken = jwt.sign(accessTokenPayload, accessTokenSecret, {
+      expiresIn: "15m",
+    });
 
-    const refreshToken = jwt.sign(
-      refreshTokenPayload,
-      refreshTokenSecret,
-      { expiresIn: "30d" },
-    );
+    const refreshToken = jwt.sign(refreshTokenPayload, refreshTokenSecret, {
+      expiresIn: "30d",
+    });
 
     await updateUser(user.id, {
       refreshToken,
@@ -1073,3 +1110,112 @@ export const googleLogin = async (
     next(error);
   }
 };
+
+export const resetSettingPassword = [
+  body("currentPassword")
+    .isString()
+    .withMessage("Current password must be a string")
+    .bail()
+    .notEmpty()
+    .withMessage("Current password is required"),
+  body("password")
+    .notEmpty()
+    .withMessage("Password is required")
+    .isLength({ min: 8, max: 72 })
+    .withMessage("Password must be between 8 and 72 characters")
+    .matches(/[a-z]/)
+    .withMessage("Password must contain at least one lowercase letter")
+    .matches(/[A-Z]/)
+    .withMessage("Password must contain at least one uppercase letter")
+    .matches(/[0-9]/)
+    .withMessage("Password must contain at least one number")
+    .matches(/[^A-Za-z0-9]/)
+    .withMessage("Password must contain at least one special character"),
+  async (req: CustomRequest, res: Response, next: NextFunction) => {
+    const errors = validationResult(req).array({ onlyFirstError: true });
+    if (errors.length > 0) {
+      return next(createError(errors[0].msg, 400, errorCode.invalid));
+    }
+
+    const { currentPassword, password } = req.body;
+    const userId = req.userId;
+    if (!userId) {
+      return next(
+        createError("Please sign in to continue", 401, errorCode.invalid)
+      );
+    }
+
+    const user = await getUserById(Number(userId));
+    checkUserIfNotExist(user);
+
+    if (!user?.password) {
+      return next(
+        createError(
+          "Your account does not have a password. Please use the password setup flow.",
+          400,
+          errorCode.invalid
+        )
+      );
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user!.password!);
+
+    if (!isMatch) {
+      return next(
+        createError("Current password is incorrect", 400, errorCode.invalid)
+      );
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashPassword = await bcrypt.hash(password, salt);
+
+    const userData = {
+      password: hashPassword,
+    };
+
+    await updateUser(user!.id, userData);
+
+    res.status(200).json({
+      message: "Successfully Update Password",
+      userid: user!.id,
+    });
+  },
+];
+
+export const deleteAccount = [
+  async (req: CustomRequest, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.userId;
+
+      if (!userId) {
+        return next(
+          createError("Please sign in to continue", 401, errorCode.invalid)
+        );
+      }
+
+      const user = await getUserById(Number(userId));
+      checkUserIfNotExist(user);
+
+      await deleteuser(user!.id);
+
+      const cookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite:
+          process.env.NODE_ENV === "production"
+            ? ("none" as const)
+            : ("strict" as const),
+      };
+
+      res.clearCookie("accessToken", cookieOptions);
+      res.clearCookie("refreshToken", cookieOptions);
+
+      return res.status(200).json({
+        message: "Account deleted successfully",
+        userId: user!.id,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+];
