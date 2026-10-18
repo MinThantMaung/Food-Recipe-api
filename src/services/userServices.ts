@@ -7,9 +7,18 @@ type ReviewInput = {
   comment: string;
 };
 
+
+type UpdateUserInput = {
+  firstName: string;
+  lastName: string;
+  countryId?: number;
+  image?: string; // Saved image path or URL, not the File itself.
+};
+
+
 export const getAllContinents = async () => {
   return prismaClient.continent.findMany({
-    select:{
+    select: {
       id: true,
       name: true,
     },
@@ -23,7 +32,7 @@ export const getCountriesByContinent = async (continentId: number) => {
     select: {
       id: true,
       name: true,
-      code: true
+      code: true,
     },
     orderBy: { id: "asc" },
   });
@@ -86,6 +95,45 @@ export const createOrUpdateUser = async (id: number, phone: string) => {
     select: {
       id: true,
       phone: true,
+    },
+  });
+};
+
+export const deleteuser = async (id: number) => {
+  return await prismaClient.user.delete({
+    where: { id },
+  });
+};
+
+export const getCountryById = async (
+  countryCode: string
+) => {
+  return prismaClient.country.findUnique({
+    where: { code: countryCode },
+    select: { id: true },
+  });
+};
+
+export const updateUserProfile = async (
+  id: number,
+  data: UpdateUserInput
+) => {
+  return prismaClient.user.update({
+    where: { id },
+    data,
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      image: true,
+      country: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
     },
   });
 };
