@@ -1,8 +1,8 @@
 import express from 'express';
-import { authCheck, confirmPassword, countryContinent, forgetPassword, googleLogin, login, logout, register, resendOtp, resetPassword, verifyOtp, verifyOtpPassword } from '../../controllers/authController';
+import { authCheck, confirmPassword, countryContinent, deleteAccount, forgetPassword, googleLogin, login, logout, register, resendOtp, resetPassword, resetSettingPassword, verifyOtp, verifyOtpPassword } from '../../controllers/authController';
 import { auth } from '../../middlewares/auth';
 import { loginLimiter } from '../../middlewares/rateLimiter';
-import { updatePhone } from '../../controllers/userController';
+import { updatePhone, updateProfile } from '../../controllers/userController';
 
 const router = express.Router();
 
@@ -18,7 +18,10 @@ router.post('/resend-otp', resendOtp);
 router.post('/update-country', countryContinent);
 router.post('/google',loginLimiter,googleLogin)
 router.patch('/phone',auth,updatePhone)
+router.patch('/updatePassword',auth,resetSettingPassword)
+router.delete('/user',auth,deleteAccount)
 
 router.get("/auth-check", auth, authCheck);
+router.patch("/update-user", auth, updateProfile)
 
 export default router;
