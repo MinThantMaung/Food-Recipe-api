@@ -11,8 +11,6 @@ import { errorHandler } from "./middlewares/error";
 
 export const app = express();
 
-console.log("FRONTEND_URL:", process.env.FRONTEND_URL);
-
 const whitelist = [
   process.env.FRONTEND_URL,
   "http://localhost:4173",
@@ -36,6 +34,10 @@ app.use(helmet());
 app.use(compression());
 app.use(cors(corsOptions));
 app.use(morgan("combined"));
+
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 
 // Only API requests consume the global limit
 app.use("/api/v1", globalApiLimiter);
