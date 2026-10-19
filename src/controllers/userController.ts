@@ -18,6 +18,7 @@ import { createError } from "../utils/error";
 import { errorCode } from "../../config/error";
 import { getRecipeById, getUserById } from "../services/authServices";
 import { checkUserIfNotExist } from "../utils/auth";
+import { uploadProfileImage } from "../services/uploadProfileImage";
 
 interface CustomRequest extends Request {
   userId?: number;
@@ -26,7 +27,7 @@ interface CustomRequest extends Request {
 export const getContinents = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const continents = await getAllContinents();
@@ -43,7 +44,7 @@ export const getContinents = async (
 export const getCountries = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const rawId = req.params.continentId;
@@ -69,7 +70,7 @@ export const getCountries = async (
 export const getCuisine = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const cuisines = await getCuisinesList();
@@ -86,7 +87,7 @@ export const getCuisine = async (
 export const getMeals = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const meals = await getMealsList();
@@ -103,7 +104,7 @@ export const getMeals = async (
 export const getDiets = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const diets = await getDietList();
@@ -120,7 +121,7 @@ export const getDiets = async (
 export const getRecipesByMeal = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const meals = await getMealsList();
@@ -137,7 +138,7 @@ export const getRecipesByMeal = async (
 export const getRecipeFilters = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const [cuisines, meals, diets] = await Promise.all([
@@ -193,8 +194,8 @@ export const postReview = [
           createError(
             "You must sign in to write a review.",
             401,
-            errorCode.unauthenticated
-          )
+            errorCode.unauthenticated,
+          ),
         );
       }
 
@@ -210,8 +211,8 @@ export const postReview = [
           createError(
             "You must sign in to write a review.",
             401,
-            errorCode.unauthenticated
-          )
+            errorCode.unauthenticated,
+          ),
         );
       }
 
@@ -243,8 +244,8 @@ export const getUserDetailById = [
           createError(
             "You must sign in to view your profile.",
             401,
-            errorCode.unauthenticated
-          )
+            errorCode.unauthenticated,
+          ),
         );
       }
       const user = await getUserById(userId);
@@ -352,6 +353,23 @@ export const updateProfile = [
     .withMessage("Country code cannot be empty")
     .bail()
     .toUpperCase(),
+  body("image").custom((_value, { req }) => {
+    const file = req.file;
+
+    if (!file) return true;
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+
+    if (!allowedTypes.includes(file.mimetype)) {
+      throw new Error("Image must be JPEG, PNG, or WebP");
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      throw new Error("Image must be 5 MB or smaller");
+    }
+
+    return true;
+  }),
   async (req: CustomRequest, res: Response, next: NextFunction) => {
     try {
       const errors = validationResult(req).array({
@@ -359,15 +377,13 @@ export const updateProfile = [
       });
 
       if (errors.length > 0) {
-        return next(
-          createError(errors[0].msg, 400, errorCode.invalid)
-        );
+        return next(createError(errors[0].msg, 400, errorCode.invalid));
       }
       const userId = Number(req.userId);
 
       if (!Number.isInteger(userId) || userId <= 0) {
         return next(
-          createError("Please sign in to continue", 401, errorCode.invalid)
+          createError("Please sign in to continue", 401, errorCode.invalid),
         );
       }
 
@@ -376,16 +392,28 @@ export const updateProfile = [
 
       const { firstName, lastName, countryCode } = req.body;
 
-      const country = await getCountryById(countryCode);
+      let countryId: number | undefined;
 
-      if (!country) {
+      if (countryCode !== undefined) {
+        // Ensure this function searches by country code, e.g. "JP".
+        const country = await getCountryById(countryCode);
+
+        if (!country) {
           return next(
             createError("Country not found", 400, errorCode.invalid)
           );
-      }
-      const countryId = country.id;
+        }
 
-      const image: string | undefined = res.locals.uploadedImagePath;
+        countryId = country.id;
+      }
+
+      let image: string | undefined;
+
+      if (req.file) {
+        image = await uploadProfileImage(req.file, userId);
+      }
+
+      console.log("Received file:", req.file?.originalname);
 
       const user = await updateUserProfile(userId, {
         firstName,

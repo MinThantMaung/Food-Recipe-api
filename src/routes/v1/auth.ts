@@ -3,6 +3,7 @@ import { authCheck, confirmPassword, countryContinent, deleteAccount, forgetPass
 import { auth } from '../../middlewares/auth';
 import { loginLimiter } from '../../middlewares/rateLimiter';
 import { updatePhone, updateProfile } from '../../controllers/userController';
+import { upload } from '../../middlewares/upload';
 
 const router = express.Router();
 
@@ -22,6 +23,6 @@ router.patch('/updatePassword',auth,resetSettingPassword)
 router.delete('/user',auth,deleteAccount)
 
 router.get("/auth-check", auth, authCheck);
-router.patch("/update-user", auth, updateProfile)
+router.patch("/update-user", auth,upload.single("image"), updateProfile)
 
 export default router;
