@@ -6,7 +6,7 @@ This repository manages authentication, recipe data, saved recipes, and user acc
 
 <!-- Replace these placeholders with your actual links before publishing. -->
 - **Frontend repository:** https://github.com/MinThantMaung/Food-recipe
-- **Production API base URL:** https://food-recipe-api-fsi8.onrender.com/api/v1/
+- **Production API base URL:** https://food-recipe-api-fsi8.onrender.com
 
 ## Features
 
