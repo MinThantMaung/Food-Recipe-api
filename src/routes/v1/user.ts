@@ -7,13 +7,13 @@ import {
   getMeals,
   getRecipeFilters,
   getRecipesByMeal,
+  getRecipesByPagination,
   getUserDetailById,
   postReview,
 } from "../../controllers/userController";
 import {
   deleteReviewRecipeDetail,
   getRecipeDetail,
-  getRecipesCard,
   getSavedRecipesData,
   getSaveRecipeData,
   saveRecipeData,
@@ -29,7 +29,7 @@ router.get("/continents/:continentId/countries", getCountries);
 router.get("/cuisines", getCuisine);
 router.get("/meals", getMeals);
 router.get("/diets", getDiets);
-router.get("/recipes", getRecipesCard);
+router.get("/pagination", getRecipesByPagination);
 router.get("/recipe/:id", getRecipeDetail);
 router.get("/cuisinesByMeal", getRecipesByMeal);
 router.get("/recipe-filters", getRecipeFilters);
