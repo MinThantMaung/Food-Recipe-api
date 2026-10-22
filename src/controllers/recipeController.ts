@@ -3,7 +3,6 @@ import {
   deleteRecipe,
   deleteReview,
   getRecipeById,
-  getRecipeForCard,
   getSavedRecipeIds,
   getSavedRecipes,
   saveRecipe,
@@ -17,23 +16,6 @@ import { max, min } from "moment";
 interface CustomRequest extends Request {
   userId?: number;
 }
-
-export const getRecipesCard = async (
-  req: CustomRequest,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const recipes = await getRecipeForCard();
-
-    return res.status(200).json({
-      message: "Recipes fetched successfully",
-      recipes,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
 export const getRecipeDetail = async (
   req: CustomRequest,
