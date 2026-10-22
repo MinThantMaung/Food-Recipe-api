@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { body, param, validationResult } from "express-validator";
+import { body, param, query, validationResult } from "express-validator";
 import {
   createOrUpdateUser,
   getAllContinents,
@@ -13,6 +13,7 @@ import {
   getCuisinesList,
   getDietList,
   getMealsList,
+  getRecipePagination,
 } from "../services/recipesServices";
 import { createError } from "../utils/error";
 import { errorCode } from "../../config/error";
@@ -83,6 +84,69 @@ export const getCuisine = async (
     return next(error);
   }
 };
+
+export const getRecipesByPagination = [
+  query("cursor")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Cursor must be a positive recipe ID."),
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 50 })
+    .withMessage("Limit must be an integer between 1 and 50."),
+
+  async (req: CustomRequest, res: Response, next: NextFunction) => {
+    try {
+      const errors = validationResult(req).array({ onlyFirstError: true });
+      if (errors.length > 0) {
+        return next(createError(errors[0].msg, 400, errorCode.invalid));
+      }
+
+      const cursor =
+        req.query.cursor === undefined
+          ? undefined
+          : Number(req.query.cursor);
+
+      const limit =
+        req.query.limit === undefined ? 4 : Number(req.query.limit);
+
+      // const cacheKey =
+      //   `recipes:cards:cursor:${cursor ?? "start"}:limit:${limit}`;
+
+      // const recipes = await getOrSetCache(cacheKey, () =>
+      //   getRecipePagination({
+      //     take: limit + 1,
+      //     skip: cursor === undefined ? 0 : 1,
+      //     cursor: cursor === undefined ? undefined : { id: cursor },
+      //     orderBy: { id: "desc" },
+      //   }),
+      // );
+      const recipes = await getRecipePagination({
+          take: limit + 1,
+          skip: cursor === undefined ? 0 : 1,
+          cursor: cursor === undefined ? undefined : { id: cursor },
+          orderBy: { id: "desc" },
+        })
+
+      const hasNextPage = recipes.length > limit;
+      // Avoid mutating the cached result.
+      const pageRecipes = recipes.slice(0, limit);
+
+      const nextCursor = hasNextPage
+        ? pageRecipes[pageRecipes.length - 1]!.id
+        : null;
+
+      return res.status(200).json({
+        message: "Recipes fetched successfully",
+        hasNextPage,
+        nextCursor,
+        recipes: pageRecipes,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+];
 
 export const getMeals = async (
   req: Request,

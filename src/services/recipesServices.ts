@@ -7,8 +7,17 @@ type UpdateReviewData = {
   comment: string;
 };
 
-export const getRecipeForCard = async () => {
+type RecipeCardOptions = {
+  take: number;
+  skip: number;
+  cursor?: { id: number };
+  orderBy: { id: "desc" };
+};
+
+
+export const getRecipePagination = async (options: RecipeCardOptions) => {
   const recipes = await prismaClient.recipe.findMany({
+    ...options, // Applies take, skip, cursor, and orderBy
     select: {
       id: true,
       title: true,
@@ -22,8 +31,6 @@ export const getRecipeForCard = async () => {
           cuisineName: true,
         },
       },
-
-      // Categories assigned to each recipe
       recipeCategories: {
         select: {
           category: {
@@ -37,6 +44,8 @@ export const getRecipeForCard = async () => {
       },
     },
   });
+
+  if (recipes.length === 0) return [];
 
   const reviewStats = await prismaClient.review.groupBy({
     by: ["recipeId"],
@@ -140,7 +149,7 @@ export const getRecipeById = async (id: number) => {
   };
 };
 
-export const getCuisinesList = async () => {
+export const getCuisinesList = async (limit?: number) => {
   return prismaClient.country.findMany({
     where: {
       cuisineName: { not: null },
@@ -157,6 +166,7 @@ export const getCuisinesList = async () => {
         },
       },
     },
+    take: limit,
     orderBy: {
       cuisineName: "asc",
     },
