@@ -69,22 +69,38 @@ export const getCountries = async (
   }
 };
 
-export const getCuisine = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const cuisines = await getCuisinesList();
+export const getCuisine = [
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 200 })
+    .withMessage("Limit must be an integer between 1 and 200."),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const errors = validationResult(req).array({ onlyFirstError: true });
+      if (errors.length > 0) {
+        return next(createError(errors[0].msg, 400, errorCode.invalid));
+      }
 
-    return res.status(200).json({
-      message: "Cuisines retrieved successfully",
-      data: cuisines,
-    });
-  } catch (error) {
-    return next(error);
-  }
-};
+      const limit =
+        req.query.limit === undefined ? undefined : Number(req.query.limit);
+
+      const cacheKey = `cuisines::${JSON.stringify(req.query)}`;
+
+      const cuisines = await getOrSetCache(
+        cacheKey,
+        () => getCuisinesList(limit),
+        86400, // 24 hours
+      );
+
+      return res.status(200).json({
+        message: "Cuisines retrieved successfully",
+        data: cuisines,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+];
 
 export const getRecipesByPagination = [
   query("cursor")
@@ -104,12 +120,9 @@ export const getRecipesByPagination = [
       }
 
       const cursor =
-        req.query.cursor === undefined
-          ? undefined
-          : Number(req.query.cursor);
+        req.query.cursor === undefined ? undefined : Number(req.query.cursor);
 
-      const limit =
-        req.query.limit === undefined ? 4 : Number(req.query.limit);
+      const limit = req.query.limit === undefined ? 4 : Number(req.query.limit);
 
       const cacheKey = `recipes:${JSON.stringify(req.query)}`;
 
@@ -457,9 +470,7 @@ export const updateProfile = [
         const country = await getCountryById(countryCode);
 
         if (!country) {
-          return next(
-            createError("Country not found", 400, errorCode.invalid)
-          );
+          return next(createError("Country not found", 400, errorCode.invalid));
         }
 
         countryId = country.id;
