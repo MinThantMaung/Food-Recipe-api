@@ -111,8 +111,7 @@ export const getRecipesByPagination = [
       const limit =
         req.query.limit === undefined ? 4 : Number(req.query.limit);
 
-      const cacheKey =
-        `recipes:cards:cursor:${cursor ?? "start"}:limit:${limit}`;
+      const cacheKey = `recipes:${JSON.stringify(req.query)}`;
 
       const recipes = await getOrSetCache(cacheKey, () =>
         getRecipePagination({
