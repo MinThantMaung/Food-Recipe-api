@@ -20,6 +20,7 @@ import { errorCode } from "../../config/error";
 import { getRecipeById, getUserById } from "../services/authServices";
 import { checkUserIfNotExist } from "../utils/auth";
 import { uploadProfileImage } from "../services/uploadProfileImage";
+import { getOrSetCache } from "../utils/cache";
 
 interface CustomRequest extends Request {
   userId?: number;
@@ -110,23 +111,17 @@ export const getRecipesByPagination = [
       const limit =
         req.query.limit === undefined ? 4 : Number(req.query.limit);
 
-      // const cacheKey =
-      //   `recipes:cards:cursor:${cursor ?? "start"}:limit:${limit}`;
+      const cacheKey =
+        `recipes:cards:cursor:${cursor ?? "start"}:limit:${limit}`;
 
-      // const recipes = await getOrSetCache(cacheKey, () =>
-      //   getRecipePagination({
-      //     take: limit + 1,
-      //     skip: cursor === undefined ? 0 : 1,
-      //     cursor: cursor === undefined ? undefined : { id: cursor },
-      //     orderBy: { id: "desc" },
-      //   }),
-      // );
-      const recipes = await getRecipePagination({
+      const recipes = await getOrSetCache(cacheKey, () =>
+        getRecipePagination({
           take: limit + 1,
           skip: cursor === undefined ? 0 : 1,
           cursor: cursor === undefined ? undefined : { id: cursor },
           orderBy: { id: "desc" },
-        })
+        }),
+      );
 
       const hasNextPage = recipes.length > limit;
       // Avoid mutating the cached result.
