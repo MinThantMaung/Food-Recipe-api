@@ -29,7 +29,7 @@ interface CustomRequest extends Request {
 export const getContinents = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const continents = await getAllContinents();
@@ -46,7 +46,7 @@ export const getContinents = async (
 export const getCountries = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const rawId = req.params.continentId;
@@ -89,7 +89,7 @@ export const getCuisine = [
       const cuisines = await getOrSetCache(
         cacheKey,
         () => getCuisinesList(limit),
-        86400, // 24 hours
+        86400 // 24 hours
       );
 
       return res.status(200).json({
@@ -132,7 +132,7 @@ export const getRecipesByPagination = [
           skip: cursor === undefined ? 0 : 1,
           cursor: cursor === undefined ? undefined : { id: cursor },
           orderBy: { id: "desc" },
-        }),
+        })
       );
 
       const hasNextPage = recipes.length > limit;
@@ -155,31 +155,51 @@ export const getRecipesByPagination = [
   },
 ];
 
-export const getMeals = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const meals = await getMealsList();
+export const getMeals = [
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 200 })
+    .withMessage("Limit must be an integer between 1 and 200."),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const errors = validationResult(req).array({ onlyFirstError: true });
+      if (errors.length > 0) {
+        return next(createError(errors[0].msg, 400, errorCode.invalid));
+      }
 
-    return res.status(200).json({
-      message: "Meals retrieved successfully",
-      data: meals,
-    });
-  } catch (error) {
-    return next(error);
-  }
-};
+      const limit =
+        req.query.limit === undefined ? undefined : Number(req.query.limit);
+
+      const cacheKey = `meals::${JSON.stringify(req.query)}`;
+
+      const meals = await getOrSetCache(
+        cacheKey,
+        () => getMealsList(limit),
+        86400 // 24 hours
+      );
+
+      return res.status(200).json({
+        message: "Meals retrieved successfully",
+        data: meals,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+];
 
 export const getDiets = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
-    const diets = await getDietList();
-
+    const cacheKey = "diet:all";
+    const diets = await getOrSetCache(
+      cacheKey,
+      () => getDietList(),
+      86400 // 24 hours
+    );
     return res.status(200).json({
       message: "Diets retrieved successfully",
       data: diets,
@@ -192,7 +212,7 @@ export const getDiets = async (
 export const getRecipesByMeal = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const meals = await getMealsList();
@@ -212,19 +232,23 @@ export const getRecipeFilters = async (
   next: NextFunction,
 ) => {
   try {
-    const [cuisines, meals, diets] = await Promise.all([
-      getCuisinesList(),
-      getMealsList(),
-      getDietList(),
-    ]);
+    const filters = await getOrSetCache(
+      "recipe-filters:all",
+      async () => {
+        const [cuisines, meals, diets] = await Promise.all([
+          getCuisinesList(),
+          getMealsList(),
+          getDietList(),
+        ]);
+
+        return { cuisines, meals, diets };
+      },
+      86400,
+    );
 
     return res.status(200).json({
       message: "Recipe filters retrieved successfully",
-      data: {
-        cuisines,
-        meals,
-        diets,
-      },
+      data: filters,
     });
   } catch (error) {
     return next(error);
@@ -265,8 +289,8 @@ export const postReview = [
           createError(
             "You must sign in to write a review.",
             401,
-            errorCode.unauthenticated,
-          ),
+            errorCode.unauthenticated
+          )
         );
       }
 
@@ -282,8 +306,8 @@ export const postReview = [
           createError(
             "You must sign in to write a review.",
             401,
-            errorCode.unauthenticated,
-          ),
+            errorCode.unauthenticated
+          )
         );
       }
 
@@ -315,8 +339,8 @@ export const getUserDetailById = [
           createError(
             "You must sign in to view your profile.",
             401,
-            errorCode.unauthenticated,
-          ),
+            errorCode.unauthenticated
+          )
         );
       }
       const user = await getUserById(userId);
@@ -454,7 +478,7 @@ export const updateProfile = [
 
       if (!Number.isInteger(userId) || userId <= 0) {
         return next(
-          createError("Please sign in to continue", 401, errorCode.invalid),
+          createError("Please sign in to continue", 401, errorCode.invalid)
         );
       }
 

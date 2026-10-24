@@ -173,7 +173,7 @@ export const getCuisinesList = async (limit?: number) => {
   });
 };
 
-export const getMealsList = async () => {
+export const getMealsList = async (limit?: number) => {
   return prismaClient.category.findMany({
     where: {
       type: "MEAL",
@@ -183,6 +183,7 @@ export const getMealsList = async () => {
       name: true,
       image: true,
     },
+    take: limit,
     orderBy: {
       name: "asc",
     },
