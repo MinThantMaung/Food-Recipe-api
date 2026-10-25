@@ -71,6 +71,36 @@ export const getRecipePagination = async (options: RecipeCardOptions) => {
   });
 };
 
+export const getRecipesPage = async (
+  requestedPage: number,
+  limit: number,
+) => {
+  const totalCount = await prismaClient.recipe.count();
+  const totalPages = Math.ceil(totalCount / limit);
+
+  // Keep the requested page within the available range.
+  const page = Math.min(
+    requestedPage,
+    Math.max(1, totalPages),
+  );
+
+  const skip = (page - 1) * limit;
+
+  const recipes = await getRecipePagination({
+    take: limit,
+    skip,
+    orderBy: { id: "desc" },
+  });
+
+  return {
+    recipes,
+    totalCount,
+    totalPages,
+    page,
+    limit,
+  };
+};
+
 export const getRecipeById = async (id: number) => {
   const recipe = await prismaClient.recipe.findUnique({
     where: { id },
