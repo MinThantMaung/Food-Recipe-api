@@ -14,6 +14,7 @@ import {
   getDietList,
   getMealsList,
   getRecipePagination,
+  getRecipesPage,
 } from "../services/recipesServices";
 import { createError } from "../utils/error";
 import { errorCode } from "../../config/error";
@@ -155,6 +156,41 @@ export const getRecipesByPagination = [
   },
 ];
 
+export const getRecipesByInfinitePagination = [
+  query("page")
+    .optional()
+    .isInt({ min: 1, max: 1_000_000 })
+    .withMessage("Page must be an integer between 1 and 1000000."),
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 50 })
+    .withMessage("Limit must be an integer between 1 and 50."),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const errors = validationResult(req).array({
+        onlyFirstError: true,
+      });
+
+      if (errors.length > 0) {
+        return next(createError(errors[0]!.msg, 400, errorCode.invalid));
+      }
+
+      const page = req.query.page === undefined ? 1 : Number(req.query.page);
+
+      const limit = req.query.limit === undefined ? 9 : Number(req.query.limit);
+
+      const result = await getRecipesPage(page, limit);
+
+      return res.status(200).json({
+        message: "Recipes fetched successfully",
+        ...result,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  },
+];
+
 export const getMeals = [
   query("limit")
     .optional()
@@ -229,7 +265,7 @@ export const getRecipesByMeal = async (
 export const getRecipeFilters = async (
   req: Request,
   res: Response,
-  next: NextFunction,
+  next: NextFunction
 ) => {
   try {
     const filters = await getOrSetCache(
@@ -243,7 +279,7 @@ export const getRecipeFilters = async (
 
         return { cuisines, meals, diets };
       },
-      86400,
+      86400
     );
 
     return res.status(200).json({
