@@ -333,3 +333,9 @@ export const getSavedRecipes = async (userId: number) => {
     };
   });
 };
+
+// test
+
+export const getRecipesList = async (options: any) => {
+  return prismaClient.recipe.findMany(options)
+}

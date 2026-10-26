@@ -14,6 +14,7 @@ import {
   getDietList,
   getMealsList,
   getRecipePagination,
+  getRecipesList,
   getRecipesPage,
 } from "../services/recipesServices";
 import { createError } from "../utils/error";
@@ -22,6 +23,7 @@ import { getRecipeById, getUserById } from "../services/authServices";
 import { checkUserIfNotExist } from "../utils/auth";
 import { uploadProfileImage } from "../services/uploadProfileImage";
 import { getOrSetCache } from "../utils/cache";
+import { orderBy } from "lodash";
 
 interface CustomRequest extends Request {
   userId?: number;
@@ -156,15 +158,48 @@ export const getRecipesByPagination = [
   },
 ];
 
+// export const getRecipesByInfinitePagination = [
+//   query("page")
+//     .optional()
+//     .isInt({ min: 1, max: 1_000_000 })
+//     .withMessage("Page must be an integer between 1 and 1000000."),
+//   query("limit")
+//     .optional()
+//     .isInt({ min: 1, max: 50 })
+//     .withMessage("Limit must be an integer between 1 and 50."),
+//   async (req: Request, res: Response, next: NextFunction) => {
+//     try {
+//       const errors = validationResult(req).array({
+//         onlyFirstError: true,
+//       });
+
+//       if (errors.length > 0) {
+//         return next(createError(errors[0]!.msg, 400, errorCode.invalid));
+//       }
+
+//       const page = req.query.page === undefined ? 1 : Number(req.query.page);
+
+//       const limit = req.query.limit === undefined ? 9 : Number(req.query.limit);
+
+//       const result = await getRecipesPage(page, limit);
+
+//       return res.status(200).json({
+//         message: "Recipes fetched successfully",
+//         ...result,
+//       });
+//     } catch (error) {
+//       return next(error);
+//     }
+//   },
+// ];
+
 export const getRecipesByInfinitePagination = [
-  query("page")
-    .optional()
-    .isInt({ min: 1, max: 1_000_000 })
-    .withMessage("Page must be an integer between 1 and 1000000."),
+  query("cursor","Cursor must be recipe ID.").isInt({gt: 0})
+    .optional(),
   query("limit")
     .optional()
-    .isInt({ min: 1, max: 50 })
-    .withMessage("Limit must be an integer between 1 and 50."),
+    .isInt({ gt: 3 })
+    .withMessage("Limit must be more then three"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const errors = validationResult(req).array({
@@ -175,15 +210,66 @@ export const getRecipesByInfinitePagination = [
         return next(createError(errors[0]!.msg, 400, errorCode.invalid));
       }
 
-      const page = req.query.page === undefined ? 1 : Number(req.query.page);
+      const lastCursor = req.query.cursor;
+      const limit = req.query.limit || 9;
+      const countryId = req.query.countryId;
 
-      const limit = req.query.limit === undefined ? 9 : Number(req.query.limit);
+      let cuisinesList : number[] = [];
 
-      const result = await getRecipesPage(page, limit);
+      if(countryId) {
+        cuisinesList = countryId.toString().split(",").map((c) => Number(c)).filter((c) => c > 0) ;
+      }
+
+      const where = {
+        AND:[
+          cuisinesList.length > 0 ? { countryId: { in: cuisinesList }} : {}
+        ]
+      }
+
+      console.log("cuisinesList: ", cuisinesList)
+
+      const option = {
+        where,
+        take: +limit+1,
+        skip: lastCursor ? 1 : 0,
+        cursor: lastCursor ? { id: +lastCursor } : undefined,
+        select: {
+          id:true,
+          title: true,
+          image: true,
+          prepTime: true,
+          cookingTime: true,
+          country: {
+            select: {
+              id: true,
+              cuisineName: true
+            }
+          }
+        },
+        orderBy: {
+          id: "desc"
+        }
+      }
+
+      const cacheKey = `recipes:${JSON.stringify(req.query)}`
+      const recipes = await getOrSetCache(cacheKey, async() => {
+        return await getRecipesList(option)
+      })
+
+      const hasNextPage = recipes.length > +limit;
+
+      if(hasNextPage){
+        recipes.pop()
+      }
+
+      const newCursor = recipes.length > 0 ? recipes[recipes.length - 1].id : null;
+
 
       return res.status(200).json({
         message: "Recipes fetched successfully",
-        ...result,
+        hasNextPage,
+        newCursor,
+        recipes
       });
     } catch (error) {
       return next(error);
