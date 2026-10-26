@@ -24,6 +24,7 @@ import { checkUserIfNotExist } from "../utils/auth";
 import { uploadProfileImage } from "../services/uploadProfileImage";
 import { getOrSetCache } from "../utils/cache";
 import { orderBy } from "lodash";
+import { contains } from "validator";
 
 interface CustomRequest extends Request {
   userId?: number;
@@ -213,6 +214,7 @@ export const getRecipesByInfinitePagination = [
       const lastCursor = req.query.cursor;
       const limit = req.query.limit || 9;
       const countryId = req.query.countryId;
+      const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
 
       let cuisinesList : number[] = [];
 
@@ -222,7 +224,8 @@ export const getRecipesByInfinitePagination = [
 
       const where = {
         AND:[
-          cuisinesList.length > 0 ? { countryId: { in: cuisinesList }} : {}
+          cuisinesList.length > 0 ? { countryId: { in: cuisinesList }} : {},
+          search.length > 0 ? { title: { contains: search, mode: "insensitive" as const},} : {},
         ]
       }
 
