@@ -14,6 +14,7 @@ import {
   getDietList,
   getMealsList,
   getRecipePagination,
+  getRecipesCount,
   getRecipesList,
   getRecipesPage,
 } from "../services/recipesServices";
@@ -25,6 +26,7 @@ import { uploadProfileImage } from "../services/uploadProfileImage";
 import { getOrSetCache } from "../utils/cache";
 import { orderBy } from "lodash";
 import { contains } from "validator";
+import { Prisma } from "../../generated/prisma/client";
 
 interface CustomRequest extends Request {
   userId?: number;
@@ -33,7 +35,7 @@ interface CustomRequest extends Request {
 export const getContinents = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const continents = await getAllContinents();
@@ -50,7 +52,7 @@ export const getContinents = async (
 export const getCountries = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const rawId = req.params.continentId;
@@ -93,7 +95,7 @@ export const getCuisine = [
       const cuisines = await getOrSetCache(
         cacheKey,
         () => getCuisinesList(limit),
-        86400 // 24 hours
+        86400, // 24 hours
       );
 
       return res.status(200).json({
@@ -136,7 +138,7 @@ export const getRecipesByPagination = [
           skip: cursor === undefined ? 0 : 1,
           cursor: cursor === undefined ? undefined : { id: cursor },
           orderBy: { id: "desc" },
-        })
+        }),
       );
 
       const hasNextPage = recipes.length > limit;
@@ -195,8 +197,7 @@ export const getRecipesByPagination = [
 // ];
 
 export const getRecipesByInfinitePagination = [
-  query("cursor","Cursor must be recipe ID.").isInt({gt: 0})
-    .optional(),
+  query("cursor", "Cursor must be recipe ID.").isInt({ gt: 0 }).optional(),
   query("limit")
     .optional()
     .isInt({ gt: 3 })
@@ -214,30 +215,132 @@ export const getRecipesByInfinitePagination = [
       const lastCursor = req.query.cursor;
       const limit = req.query.limit || 9;
       const countryId = req.query.countryId;
-      const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+      const sort =
+        typeof req.query.sort === "string" ? req.query.sort : "recommended";
+      const search =
+        typeof req.query.search === "string" ? req.query.search.trim() : "";
+      const meal = req.query.meal;
+      const diet = req.query.diet;
 
-      let cuisinesList : number[] = [];
+      let cuisinesList: number[] = [];
+      let mealsList: number[] = [];
+      let dietList: number[] = [];
+      let orderBy: Prisma.RecipeOrderByWithRelationInput[];
 
-      if(countryId) {
-        cuisinesList = countryId.toString().split(",").map((c) => Number(c)).filter((c) => c > 0) ;
+      if (countryId) {
+        cuisinesList = countryId
+          .toString()
+          .split(",")
+          .map((c) => Number(c))
+          .filter((c) => c > 0);
       }
 
-      const where = {
-        AND:[
-          cuisinesList.length > 0 ? { countryId: { in: cuisinesList }} : {},
-          search.length > 0 ? { title: { contains: search, mode: "insensitive" as const},} : {},
-        ]
+      if (typeof meal === "string") {
+        mealsList = meal
+          .split(",")
+          .map(Number)
+          .filter((id) => Number.isInteger(id) && id > 0);
       }
 
-      console.log("cuisinesList: ", cuisinesList)
+      if (typeof diet === "string") {
+        dietList = diet
+          .split(",")
+          .map(Number)
+          .filter((id) => Number.isInteger(id) && id > 0);
+      }
+
+      switch (sort) {
+        case "Asc":
+          orderBy = [{ title: "asc" }, { id: "desc" }];
+          break;
+
+        case "Desc":
+          orderBy = [{ title: "desc" }, { id: "desc" }];
+          break;
+
+        case "MostPopular":
+          orderBy = [{ reviews: { _count: "desc" } }, { id: "desc" }];
+          break;
+
+        case "ShortestTime":
+          orderBy = [
+            { cookingTime: { sort: "asc", nulls: "last" } },
+            { id: "desc" },
+          ];
+          break;
+
+        case "LongestTime":
+          orderBy = [
+            { cookingTime: { sort: "desc", nulls: "last" } },
+            { id: "desc" },
+          ];
+          break;
+
+        case "HighestRated":
+          return next(
+            createError(
+              "Highest-rated sorting is not implemented yet.",
+              400,
+              errorCode.invalid,
+            ),
+          );
+
+        case "recommended":
+          orderBy = [{ id: "desc" }];
+          break;
+
+        default:
+          return next(
+            createError("Invalid sort option.", 400, errorCode.invalid),
+          );
+      }
+
+      const where: Prisma.RecipeWhereInput = {
+        AND: [
+          cuisinesList.length > 0 ? { countryId: { in: cuisinesList } } : {},
+          search.length > 0
+            ? { title: { contains: search, mode: "insensitive" as const } }
+            : {},
+          mealsList.length > 0
+            ? {
+                recipeCategories: {
+                  some: {
+                    categoryId: {
+                      in: mealsList,
+                    },
+                    category: {
+                      type: "MEAL",
+                    },
+                  },
+                },
+              }
+            : {},
+          dietList.length > 0
+            ? {
+                recipeCategories: {
+                  some: {
+                    categoryId: {
+                      in: dietList,
+                    },
+                    category: {
+                      type: "DIET",
+                    },
+                  },
+                },
+              }
+            : {},
+        ],
+      };
+
+      console.log("cuisinesList: ", cuisinesList);
 
       const option = {
         where,
-        take: +limit+1,
+        take: +limit + 1,
         skip: lastCursor ? 1 : 0,
         cursor: lastCursor ? { id: +lastCursor } : undefined,
         select: {
-          id:true,
+          id: true,
           title: true,
           image: true,
           prepTime: true,
@@ -245,34 +348,37 @@ export const getRecipesByInfinitePagination = [
           country: {
             select: {
               id: true,
-              cuisineName: true
-            }
-          }
+              cuisineName: true,
+            },
+          },
         },
-        orderBy: {
-          id: "desc"
-        }
-      }
+        orderBy,
+      };
 
-      const cacheKey = `recipes:${JSON.stringify(req.query)}`
-      const recipes = await getOrSetCache(cacheKey, async() => {
-        return await getRecipesList(option)
-      })
+      const cacheKey = `recipes:${JSON.stringify(req.query)}`;
+      const recipes = await getOrSetCache(cacheKey, async () => {
+        return await getRecipesList(option);
+      });
 
       const hasNextPage = recipes.length > +limit;
 
-      if(hasNextPage){
-        recipes.pop()
+      if (hasNextPage) {
+        recipes.pop();
       }
 
-      const newCursor = recipes.length > 0 ? recipes[recipes.length - 1].id : null;
+      const newCursor =
+        recipes.length > 0 ? recipes[recipes.length - 1].id : null;
 
+      const totalCount = await getRecipesCount(where);
+      const totalPages = Math.ceil(totalCount / Number(limit));
 
       return res.status(200).json({
         message: "Recipes fetched successfully",
         hasNextPage,
-        newCursor,
-        recipes
+        nextCursor: hasNextPage ? newCursor : null,
+        totalPages,
+        totalCount,
+        recipes,
       });
     } catch (error) {
       return next(error);
@@ -300,7 +406,7 @@ export const getMeals = [
       const meals = await getOrSetCache(
         cacheKey,
         () => getMealsList(limit),
-        86400 // 24 hours
+        86400, // 24 hours
       );
 
       return res.status(200).json({
@@ -316,14 +422,14 @@ export const getMeals = [
 export const getDiets = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const cacheKey = "diet:all";
     const diets = await getOrSetCache(
       cacheKey,
       () => getDietList(),
-      86400 // 24 hours
+      86400, // 24 hours
     );
     return res.status(200).json({
       message: "Diets retrieved successfully",
@@ -337,7 +443,7 @@ export const getDiets = async (
 export const getRecipesByMeal = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const meals = await getMealsList();
@@ -354,7 +460,7 @@ export const getRecipesByMeal = async (
 export const getRecipeFilters = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) => {
   try {
     const filters = await getOrSetCache(
@@ -368,7 +474,7 @@ export const getRecipeFilters = async (
 
         return { cuisines, meals, diets };
       },
-      86400
+      86400,
     );
 
     return res.status(200).json({
@@ -414,8 +520,8 @@ export const postReview = [
           createError(
             "You must sign in to write a review.",
             401,
-            errorCode.unauthenticated
-          )
+            errorCode.unauthenticated,
+          ),
         );
       }
 
@@ -431,8 +537,8 @@ export const postReview = [
           createError(
             "You must sign in to write a review.",
             401,
-            errorCode.unauthenticated
-          )
+            errorCode.unauthenticated,
+          ),
         );
       }
 
@@ -464,8 +570,8 @@ export const getUserDetailById = [
           createError(
             "You must sign in to view your profile.",
             401,
-            errorCode.unauthenticated
-          )
+            errorCode.unauthenticated,
+          ),
         );
       }
       const user = await getUserById(userId);
@@ -603,7 +709,7 @@ export const updateProfile = [
 
       if (!Number.isInteger(userId) || userId <= 0) {
         return next(
-          createError("Please sign in to continue", 401, errorCode.invalid)
+          createError("Please sign in to continue", 401, errorCode.invalid),
         );
       }
 

@@ -1,3 +1,4 @@
+import { Prisma } from "../../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
 
 type UpdateReviewData = {
@@ -339,3 +340,9 @@ export const getSavedRecipes = async (userId: number) => {
 export const getRecipesList = async (options: any) => {
   return prismaClient.recipe.findMany(options)
 }
+
+export const getRecipesCount = (
+  where: Prisma.RecipeWhereInput,
+) => {
+  return prismaClient.recipe.count({ where });
+};
