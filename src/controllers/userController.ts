@@ -27,6 +27,7 @@ import { getOrSetCache } from "../utils/cache";
 import { orderBy } from "lodash";
 import { contains } from "validator";
 import { Prisma } from "../../generated/prisma/client";
+import { prismaClient } from "../lib/prisma";
 
 interface CustomRequest extends Request {
   userId?: number;
@@ -161,47 +162,22 @@ export const getRecipesByPagination = [
   },
 ];
 
-// export const getRecipesByInfinitePagination = [
-//   query("page")
-//     .optional()
-//     .isInt({ min: 1, max: 1_000_000 })
-//     .withMessage("Page must be an integer between 1 and 1000000."),
-//   query("limit")
-//     .optional()
-//     .isInt({ min: 1, max: 50 })
-//     .withMessage("Limit must be an integer between 1 and 50."),
-//   async (req: Request, res: Response, next: NextFunction) => {
-//     try {
-//       const errors = validationResult(req).array({
-//         onlyFirstError: true,
-//       });
-
-//       if (errors.length > 0) {
-//         return next(createError(errors[0]!.msg, 400, errorCode.invalid));
-//       }
-
-//       const page = req.query.page === undefined ? 1 : Number(req.query.page);
-
-//       const limit = req.query.limit === undefined ? 9 : Number(req.query.limit);
-
-//       const result = await getRecipesPage(page, limit);
-
-//       return res.status(200).json({
-//         message: "Recipes fetched successfully",
-//         ...result,
-//       });
-//     } catch (error) {
-//       return next(error);
-//     }
-//   },
-// ];
 
 export const getRecipesByInfinitePagination = [
-  query("cursor", "Cursor must be recipe ID.").isInt({ gt: 0 }).optional(),
+  query("cursor", "Cursor must be recipe ID.")
+    .isInt({ gt: 0 })
+    .optional(),
+
   query("limit")
     .optional()
     .isInt({ gt: 3 })
-    .withMessage("Limit must be more then three"),
+    .withMessage("Limit must be more than three"),
+
+  query("totalTime")
+    .optional()
+    .isIn(["1", "2", "3", "4"])
+    .withMessage("Invalid total time filter."),
+
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const errors = validationResult(req).array({
@@ -209,69 +185,151 @@ export const getRecipesByInfinitePagination = [
       });
 
       if (errors.length > 0) {
-        return next(createError(errors[0]!.msg, 400, errorCode.invalid));
+        return next(
+          createError(errors[0]!.msg, 400, errorCode.invalid),
+        );
       }
 
+      // -------------------------
+      // Request parameters
+      // -------------------------
+
       const lastCursor = req.query.cursor;
-      const limit = req.query.limit || 9;
+      const limit = Number(req.query.limit ?? 9);
       const countryId = req.query.countryId;
+
       const sort =
-        typeof req.query.sort === "string" ? req.query.sort : "recommended";
+        typeof req.query.sort === "string"
+          ? req.query.sort
+          : "recommended";
+
       const search =
-        typeof req.query.search === "string" ? req.query.search.trim() : "";
+        typeof req.query.search === "string"
+          ? req.query.search.trim()
+          : "";
+
       const meal = req.query.meal;
       const diet = req.query.diet;
+      const totalTime = req.query.totalTime;
+
+      // -------------------------
+      // Total time mapping
+      // -------------------------
+
+      const TOTAL_TIME_LIMITS: Record<string, number> = {
+        "1": 15,
+        "2": 30,
+        "3": 60,
+        "4": 90,
+      };
+
+      const maxTotalTime =
+        typeof totalTime === "string"
+          ? TOTAL_TIME_LIMITS[totalTime]
+          : undefined;
+
+      // -------------------------
+      // Filter lists
+      // -------------------------
 
       let cuisinesList: number[] = [];
       let mealsList: number[] = [];
       let dietList: number[] = [];
+
       let orderBy: Prisma.RecipeOrderByWithRelationInput[];
 
-      if (countryId) {
+      if (typeof countryId === "string") {
         cuisinesList = countryId
-          .toString()
           .split(",")
-          .map((c) => Number(c))
-          .filter((c) => c > 0);
+          .map(Number)
+          .filter(
+            (id) => Number.isInteger(id) && id > 0,
+          );
       }
 
       if (typeof meal === "string") {
         mealsList = meal
           .split(",")
           .map(Number)
-          .filter((id) => Number.isInteger(id) && id > 0);
+          .filter(
+            (id) => Number.isInteger(id) && id > 0,
+          );
       }
 
       if (typeof diet === "string") {
         dietList = diet
           .split(",")
           .map(Number)
-          .filter((id) => Number.isInteger(id) && id > 0);
+          .filter(
+            (id) => Number.isInteger(id) && id > 0,
+          );
+      }
+
+      // -------------------------
+      // Total time filter
+      // prepTime + cookingTime
+      // -------------------------
+
+      let timeFilteredRecipeIds: number[] | undefined;
+
+      if (maxTotalTime !== undefined) {
+        const matchingRecipes = await prismaClient.$queryRaw<
+          { id: number }[]
+        >`
+          SELECT id
+          FROM "Recipe"
+          WHERE "prepTime" IS NOT NULL
+            AND "cookingTime" IS NOT NULL
+            AND ("prepTime" + "cookingTime") < ${maxTotalTime}
+        `;
+
+        timeFilteredRecipeIds = matchingRecipes.map(
+          (recipe) => recipe.id,
+        );
       }
 
       switch (sort) {
         case "Asc":
-          orderBy = [{ title: "asc" }, { id: "desc" }];
+          orderBy = [
+            { title: "asc" },
+            { id: "desc" },
+          ];
           break;
 
         case "Desc":
-          orderBy = [{ title: "desc" }, { id: "desc" }];
+          orderBy = [
+            { title: "desc" },
+            { id: "desc" },
+          ];
           break;
 
         case "MostPopular":
-          orderBy = [{ reviews: { _count: "desc" } }, { id: "desc" }];
+          orderBy = [
+            { reviews: { _count: "desc" } },
+            { id: "desc" },
+          ];
           break;
 
         case "ShortestTime":
           orderBy = [
-            { cookingTime: { sort: "asc", nulls: "last" } },
+            {
+              cookingTime: {
+                sort: "asc",
+                nulls: "last",
+              },
+            },
             { id: "desc" },
           ];
           break;
 
         case "LongestTime":
           orderBy = [
-            { cookingTime: { sort: "desc", nulls: "last" } },
+            {
+              cookingTime: {
+                sort: "desc",
+                nulls: "last",
+              },
+            },
             { id: "desc" },
           ];
           break;
@@ -291,16 +349,36 @@ export const getRecipesByInfinitePagination = [
 
         default:
           return next(
-            createError("Invalid sort option.", 400, errorCode.invalid),
+            createError(
+              "Invalid sort option.",
+              400,
+              errorCode.invalid,
+            ),
           );
       }
 
       const where: Prisma.RecipeWhereInput = {
         AND: [
-          cuisinesList.length > 0 ? { countryId: { in: cuisinesList } } : {},
-          search.length > 0
-            ? { title: { contains: search, mode: "insensitive" as const } }
+          // Cuisine filter
+          cuisinesList.length > 0
+            ? {
+                countryId: {
+                  in: cuisinesList,
+                },
+              }
             : {},
+
+          // Search filter
+          search.length > 0
+            ? {
+                title: {
+                  contains: search,
+                  mode: "insensitive",
+                },
+              }
+            : {},
+
+          // Meal filter
           mealsList.length > 0
             ? {
                 recipeCategories: {
@@ -315,6 +393,8 @@ export const getRecipesByInfinitePagination = [
                 },
               }
             : {},
+
+          // Diet filter
           dietList.length > 0
             ? {
                 recipeCategories: {
@@ -329,22 +409,34 @@ export const getRecipesByInfinitePagination = [
                 },
               }
             : {},
+
+          // Total time filter
+          timeFilteredRecipeIds !== undefined
+            ? {
+                id: {
+                  in: timeFilteredRecipeIds,
+                },
+              }
+            : {},
         ],
       };
 
-      console.log("cuisinesList: ", cuisinesList);
-
       const option = {
         where,
-        take: +limit + 1,
+        take: limit + 1,
         skip: lastCursor ? 1 : 0,
-        cursor: lastCursor ? { id: +lastCursor } : undefined,
+
+        cursor: lastCursor
+          ? { id: Number(lastCursor) }
+          : undefined,
+
         select: {
           id: true,
           title: true,
           image: true,
           prepTime: true,
           cookingTime: true,
+
           country: {
             select: {
               id: true,
@@ -352,30 +444,39 @@ export const getRecipesByInfinitePagination = [
             },
           },
         },
+
         orderBy,
       };
 
       const cacheKey = `recipes:${JSON.stringify(req.query)}`;
-      const recipes = await getOrSetCache(cacheKey, async () => {
-        return await getRecipesList(option);
-      });
 
-      const hasNextPage = recipes.length > +limit;
+      const cachedRecipes = await getOrSetCache(
+        cacheKey,
+        async () => {
+          return await getRecipesList(option);
+        },
+      );
 
-      if (hasNextPage) {
-        recipes.pop();
-      }
+      const hasNextPage = cachedRecipes.length > limit;
 
-      const newCursor =
-        recipes.length > 0 ? recipes[recipes.length - 1].id : null;
+      // Avoid mutating cached data
+      const recipes = cachedRecipes.slice(0, limit);
+
+      const nextCursor =
+        hasNextPage && recipes.length > 0
+          ? recipes[recipes.length - 1].id
+          : null;
 
       const totalCount = await getRecipesCount(where);
-      const totalPages = Math.ceil(totalCount / Number(limit));
+
+      const totalPages = Math.ceil(
+        totalCount / limit,
+      );
 
       return res.status(200).json({
         message: "Recipes fetched successfully",
         hasNextPage,
-        nextCursor: hasNextPage ? newCursor : null,
+        nextCursor,
         totalPages,
         totalCount,
         recipes,
@@ -385,6 +486,7 @@ export const getRecipesByInfinitePagination = [
     }
   },
 ];
+
 
 export const getMeals = [
   query("limit")
