@@ -20,7 +20,11 @@ import {
 } from "../services/recipesServices";
 import { createError } from "../utils/error";
 import { errorCode } from "../../config/error";
-import { getRecipeById, getUserById } from "../services/authServices";
+import {
+  getRecipeById,
+  getUserByEmail,
+  getUserById,
+} from "../services/authServices";
 import { checkUserIfNotExist } from "../utils/auth";
 import { uploadProfileImage } from "../services/uploadProfileImage";
 import { getOrSetCache } from "../utils/cache";
@@ -28,6 +32,7 @@ import { orderBy } from "lodash";
 import { contains } from "validator";
 import { Prisma } from "../../generated/prisma/client";
 import { prismaClient } from "../lib/prisma";
+import { sendContactEmailService } from "../services/sendContactEmail";
 
 interface CustomRequest extends Request {
   userId?: number;
@@ -162,11 +167,8 @@ export const getRecipesByPagination = [
   },
 ];
 
-
 export const getRecipesByInfinitePagination = [
-  query("cursor", "Cursor must be recipe ID.")
-    .isInt({ gt: 0 })
-    .optional(),
+  query("cursor", "Cursor must be recipe ID.").isInt({ gt: 0 }).optional(),
 
   query("limit")
     .optional()
@@ -185,9 +187,7 @@ export const getRecipesByInfinitePagination = [
       });
 
       if (errors.length > 0) {
-        return next(
-          createError(errors[0]!.msg, 400, errorCode.invalid),
-        );
+        return next(createError(errors[0]!.msg, 400, errorCode.invalid));
       }
 
       // -------------------------
@@ -199,14 +199,10 @@ export const getRecipesByInfinitePagination = [
       const countryId = req.query.countryId;
 
       const sort =
-        typeof req.query.sort === "string"
-          ? req.query.sort
-          : "recommended";
+        typeof req.query.sort === "string" ? req.query.sort : "recommended";
 
       const search =
-        typeof req.query.search === "string"
-          ? req.query.search.trim()
-          : "";
+        typeof req.query.search === "string" ? req.query.search.trim() : "";
 
       const meal = req.query.meal;
       const diet = req.query.diet;
@@ -242,27 +238,21 @@ export const getRecipesByInfinitePagination = [
         cuisinesList = countryId
           .split(",")
           .map(Number)
-          .filter(
-            (id) => Number.isInteger(id) && id > 0,
-          );
+          .filter((id) => Number.isInteger(id) && id > 0);
       }
 
       if (typeof meal === "string") {
         mealsList = meal
           .split(",")
           .map(Number)
-          .filter(
-            (id) => Number.isInteger(id) && id > 0,
-          );
+          .filter((id) => Number.isInteger(id) && id > 0);
       }
 
       if (typeof diet === "string") {
         dietList = diet
           .split(",")
           .map(Number)
-          .filter(
-            (id) => Number.isInteger(id) && id > 0,
-          );
+          .filter((id) => Number.isInteger(id) && id > 0);
       }
 
       // -------------------------
@@ -273,9 +263,7 @@ export const getRecipesByInfinitePagination = [
       let timeFilteredRecipeIds: number[] | undefined;
 
       if (maxTotalTime !== undefined) {
-        const matchingRecipes = await prismaClient.$queryRaw<
-          { id: number }[]
-        >`
+        const matchingRecipes = await prismaClient.$queryRaw<{ id: number }[]>`
           SELECT id
           FROM "Recipe"
           WHERE "prepTime" IS NOT NULL
@@ -283,31 +271,20 @@ export const getRecipesByInfinitePagination = [
             AND ("prepTime" + "cookingTime") < ${maxTotalTime}
         `;
 
-        timeFilteredRecipeIds = matchingRecipes.map(
-          (recipe) => recipe.id,
-        );
+        timeFilteredRecipeIds = matchingRecipes.map((recipe) => recipe.id);
       }
 
       switch (sort) {
         case "Asc":
-          orderBy = [
-            { title: "asc" },
-            { id: "desc" },
-          ];
+          orderBy = [{ title: "asc" }, { id: "desc" }];
           break;
 
         case "Desc":
-          orderBy = [
-            { title: "desc" },
-            { id: "desc" },
-          ];
+          orderBy = [{ title: "desc" }, { id: "desc" }];
           break;
 
         case "MostPopular":
-          orderBy = [
-            { reviews: { _count: "desc" } },
-            { id: "desc" },
-          ];
+          orderBy = [{ reviews: { _count: "desc" } }, { id: "desc" }];
           break;
 
         case "ShortestTime":
@@ -349,11 +326,7 @@ export const getRecipesByInfinitePagination = [
 
         default:
           return next(
-            createError(
-              "Invalid sort option.",
-              400,
-              errorCode.invalid,
-            ),
+            createError("Invalid sort option.", 400, errorCode.invalid),
           );
       }
 
@@ -426,9 +399,7 @@ export const getRecipesByInfinitePagination = [
         take: limit + 1,
         skip: lastCursor ? 1 : 0,
 
-        cursor: lastCursor
-          ? { id: Number(lastCursor) }
-          : undefined,
+        cursor: lastCursor ? { id: Number(lastCursor) } : undefined,
 
         select: {
           id: true,
@@ -450,12 +421,9 @@ export const getRecipesByInfinitePagination = [
 
       const cacheKey = `recipes:${JSON.stringify(req.query)}`;
 
-      const cachedRecipes = await getOrSetCache(
-        cacheKey,
-        async () => {
-          return await getRecipesList(option);
-        },
-      );
+      const cachedRecipes = await getOrSetCache(cacheKey, async () => {
+        return await getRecipesList(option);
+      });
 
       const hasNextPage = cachedRecipes.length > limit;
 
@@ -469,9 +437,7 @@ export const getRecipesByInfinitePagination = [
 
       const totalCount = await getRecipesCount(where);
 
-      const totalPages = Math.ceil(
-        totalCount / limit,
-      );
+      const totalPages = Math.ceil(totalCount / limit);
 
       return res.status(200).json({
         message: "Recipes fetched successfully",
@@ -486,7 +452,6 @@ export const getRecipesByInfinitePagination = [
     }
   },
 ];
-
 
 export const getMeals = [
   query("limit")
@@ -853,6 +818,49 @@ export const updateProfile = [
         user,
       });
     } catch (error) {
+      next(error);
+    }
+  },
+];
+
+export const sendContactEmail = [
+  body("name")
+    .trim()
+    .notEmpty()
+    .withMessage("Name should not be empty")
+    .isLength({ max: 100 })
+    .withMessage("Name must not exceed 100 characters"),
+  body("email")
+    .trim()
+    .isEmail()
+    .withMessage("Invalid email address")
+    .bail()
+    .normalizeEmail(),
+  body("message")
+    .trim()
+    .notEmpty()
+    .withMessage("Message should not be empty")
+    .isLength({ max: 5000 })
+    .withMessage("Message must not exceed 5000 characters"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req).array({ onlyFirstError: true });
+    try {
+      if (errors.length > 0) {
+        return next(createError(errors[0].msg, 400, errorCode.invalid));
+      }
+
+      //get req body
+      const { name, email, message } = req.body;
+      await sendContactEmailService({
+        name,
+        email,
+        message,
+      });
+
+      return res.status(200).json({
+        message: "Your message has been sent successfully!",
+      });
+    } catch (error: unknown) {
       next(error);
     }
   },

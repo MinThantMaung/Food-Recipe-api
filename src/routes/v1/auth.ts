@@ -2,7 +2,7 @@ import express from 'express';
 import { authCheck, confirmPassword, countryContinent, deleteAccount, forgetPassword, googleLogin, login, logout, register, resendOtp, resetPassword, resetSettingPassword, verifyOtp, verifyOtpPassword } from '../../controllers/authController';
 import { auth } from '../../middlewares/auth';
 import { loginLimiter } from '../../middlewares/rateLimiter';
-import { updatePhone, updateProfile } from '../../controllers/userController';
+import { sendContactEmail, updatePhone, updateProfile } from '../../controllers/userController';
 import { upload } from '../../middlewares/upload';
 
 const router = express.Router();
@@ -21,6 +21,7 @@ router.post('/google',loginLimiter,googleLogin)
 router.patch('/phone',auth,updatePhone)
 router.patch('/updatePassword',auth,resetSettingPassword)
 router.delete('/user',auth,deleteAccount)
+router.post("/contact", sendContactEmail);
 
 router.get("/auth-check", auth, authCheck);
 router.patch("/update-user", auth,upload.single("image"), updateProfile)
