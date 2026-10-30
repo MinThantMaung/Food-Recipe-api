@@ -12,6 +12,7 @@ import { body, validationResult } from "express-validator";
 import { createError } from "../utils/error";
 import { errorCode } from "../../config/error";
 import { max, min } from "moment";
+import { invalidateRecipeListCache } from "../utils/cache";
 
 interface CustomRequest extends Request {
   userId?: number;
@@ -70,6 +71,7 @@ export const deleteReviewRecipeDetail = async (
     }
 
     await deleteReview(userId, recipeId);
+    await invalidateRecipeListCache();
 
     return res.status(200).json({
       message: "Review deleted successfully",
@@ -78,8 +80,6 @@ export const deleteReviewRecipeDetail = async (
     next(error);
   }
 };
-
-import { updateReview as updateReviewService } from "../services/recipesServices";
 
 export const updateReviewRecipeDetail = [
   body("rating")
@@ -131,6 +131,7 @@ export const updateReviewRecipeDetail = [
         rating,
         comment,
       });
+      await invalidateRecipeListCache();
 
       return res.status(200).json({
         message: "Review updated successfully",

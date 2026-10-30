@@ -26,7 +26,7 @@ import {
 } from "../services/authServices";
 import { checkUserIfNotExist } from "../utils/auth";
 import { uploadProfileImage } from "../services/uploadProfileImage";
-import { getOrSetCache } from "../utils/cache";
+import { getOrSetCache, invalidateRecipeListCache } from "../utils/cache";
 import { orderBy } from "lodash";
 import { contains } from "validator";
 import { Prisma } from "../../generated/prisma/client";
@@ -602,6 +602,7 @@ export const postReview = [
       };
 
       const createdReview = await giveReview(reviewData);
+      await invalidateRecipeListCache();
 
       return res.status(201).json({
         message: "Review submitted successfully",

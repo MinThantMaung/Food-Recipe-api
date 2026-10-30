@@ -56,3 +56,23 @@ export const getOrSetCache = async <T>(
 
   return freshData;
 };
+
+export const invalidateRecipeListCache = async (): Promise<void> => {
+  let cursor = "0";
+
+  do {
+    const [nextCursor, keys] = await redis.scan(
+      cursor,
+      "MATCH",
+      "recipes:*",
+      "COUNT",
+      100,
+    );
+
+    cursor = nextCursor;
+
+    if (keys.length > 0) {
+      await Promise.all(keys.map((key) => redis.unlink(key)));
+    }
+  } while (cursor !== "0");
+};
