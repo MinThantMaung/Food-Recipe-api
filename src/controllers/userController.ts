@@ -16,7 +16,6 @@ import {
   getRecipePagination,
   getRecipesCount,
   getRecipesList,
-  getRecipesPage,
 } from "../services/recipesServices";
 import { createError } from "../utils/error";
 import { errorCode } from "../../config/error";
@@ -169,17 +168,10 @@ export const getRecipesByPagination = [
 
 export const getRecipesByInfinitePagination = [
   query("cursor", "Cursor must be recipe ID.").isInt({ gt: 0 }).optional(),
-
   query("limit")
     .optional()
     .isInt({ gt: 3 })
     .withMessage("Limit must be more than three"),
-
-  query("totalTime")
-    .optional()
-    .isIn(["1", "2", "3", "4"])
-    .withMessage("Invalid total time filter."),
-
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const errors = validationResult(req).array({
@@ -189,10 +181,6 @@ export const getRecipesByInfinitePagination = [
       if (errors.length > 0) {
         return next(createError(errors[0]!.msg, 400, errorCode.invalid));
       }
-
-      // -------------------------
-      // Request parameters
-      // -------------------------
 
       const lastCursor = req.query.cursor;
       const limit = Number(req.query.limit ?? 9);
@@ -208,10 +196,6 @@ export const getRecipesByInfinitePagination = [
       const diet = req.query.diet;
       const totalTime = req.query.totalTime;
 
-      // -------------------------
-      // Total time mapping
-      // -------------------------
-
       const TOTAL_TIME_LIMITS: Record<string, number> = {
         "1": 15,
         "2": 30,
@@ -223,10 +207,6 @@ export const getRecipesByInfinitePagination = [
         typeof totalTime === "string"
           ? TOTAL_TIME_LIMITS[totalTime]
           : undefined;
-
-      // -------------------------
-      // Filter lists
-      // -------------------------
 
       let cuisinesList: number[] = [];
       let mealsList: number[] = [];
@@ -254,11 +234,6 @@ export const getRecipesByInfinitePagination = [
           .map(Number)
           .filter((id) => Number.isInteger(id) && id > 0);
       }
-
-      // -------------------------
-      // Total time filter
-      // prepTime + cookingTime
-      // -------------------------
 
       let timeFilteredRecipeIds: number[] | undefined;
 
@@ -310,15 +285,6 @@ export const getRecipesByInfinitePagination = [
             { id: "desc" },
           ];
           break;
-
-        case "HighestRated":
-          return next(
-            createError(
-              "Highest-rated sorting is not implemented yet.",
-              400,
-              errorCode.invalid,
-            ),
-          );
 
         case "recommended":
           orderBy = [{ id: "desc" }];
@@ -414,10 +380,15 @@ export const getRecipesByInfinitePagination = [
               cuisineName: true,
             },
           },
+           reviews: {
+              select: {
+                rating: true,
+              },
+            },
         },
 
         orderBy,
-      };
+      }
 
       const cacheKey = `recipes:${JSON.stringify(req.query)}`;
 
@@ -429,7 +400,6 @@ export const getRecipesByInfinitePagination = [
 
       // Avoid mutating cached data
       const recipes = cachedRecipes.slice(0, limit);
-
       const nextCursor =
         hasNextPage && recipes.length > 0
           ? recipes[recipes.length - 1].id
