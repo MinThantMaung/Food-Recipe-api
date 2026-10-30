@@ -399,7 +399,22 @@ export const getRecipesByInfinitePagination = [
       const hasNextPage = cachedRecipes.length > limit;
 
       // Avoid mutating cached data
-      const recipes = cachedRecipes.slice(0, limit);
+      const recipes = cachedRecipes.slice(0, limit).map((recipe) => {
+        const { reviews, ...recipeData } = recipe;
+
+        const reviewCount = reviews.length;
+
+        const rating =
+          reviewCount > 0
+            ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount
+            : 0;
+
+        return {
+          ...recipeData,
+          rating,
+          reviewCount,
+        };
+      });
       const nextCursor =
         hasNextPage && recipes.length > 0
           ? recipes[recipes.length - 1].id

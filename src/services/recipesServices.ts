@@ -335,11 +335,13 @@ export const getSavedRecipes = async (userId: number) => {
   });
 };
 
-// test
-
-export const getRecipesList = async (options: any) => {
-  return prismaClient.recipe.findMany(options)
-}
+export const getRecipesList = <
+  T extends Prisma.RecipeFindManyArgs,
+>(
+  options: Prisma.SelectSubset<T, Prisma.RecipeFindManyArgs>,
+) => {
+  return prismaClient.recipe.findMany(options);
+};
 
 export const getRecipesCount = (
   where: Prisma.RecipeWhereInput,
